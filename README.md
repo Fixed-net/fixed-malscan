@@ -68,7 +68,11 @@ Everything is in the `CHECK REGISTRY` section of the script; each check is one l
 - `register_check` – a code pattern (regex), optional decoder
 - `register_file_check` – a file name/path rule, optional `classify_<ID>` for per-file severity
 - `register_signatures` – a list of plain words (no regex needed)
-- `allow` – hide a known false positive for specific checks
+- `rate_<ID>` – optional: rate each match by its content (other severity, or `skip`)
+- `allow` – hide a known false positive for specific checks (last resort: prefer `rate_<ID>`)
 
 A broken regex stops the run; `--verify` shows `DIFF` if a new check would miss matches.
+`bash tests/run.sh` scans the synthetic samples in `tests/samples` (malicious ones must be flagged,
+known false positives must stay quiet) and compares every result with `tests/expected.txt`.
+Add a sample for each new check or false-positive fix (`tests/make-samples.pl`).
 Bump `VERSION` in the script and create a matching release tag (e.g. `v2.6`) for each change.

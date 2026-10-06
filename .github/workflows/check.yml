@@ -16,3 +16,5 @@ jobs:
         run: shellcheck -S error fixed-malscan.sh
       - name: Self-test (tools, checks and regexes load)
         run: bash fixed-malscan.sh -k -l
+      - name: Regression samples (must-flag / must-ignore, --verify)
+        run: bash tests/run.sh

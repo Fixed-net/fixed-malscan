@@ -1,0 +1,4 @@
+<?php
+// fixed-malscan test sample - synthetic, harmless (example.com only)
+/* Plugin Name: Example Helper */
+add_filter('x', '__return_true');

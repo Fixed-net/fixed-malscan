@@ -21,7 +21,7 @@
 #  FIXED-MALSCAN-SELF-DELETE-MARKER  (only a file containing this line is deleted)
 # =============================================================================
 
-VERSION="2.6"
+VERSION="2.7"
 if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || \
    { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 2 ]; }; then
   echo "fixed-malscan: bash >= 4.2 required (run it with bash, not sh)" >&2; exit 2
@@ -49,7 +49,7 @@ export LC_ALL=C        # byte-wise matching: much faster, no locale surprises
 #  Content checks (grep the code):
 #  register_check ID SEVERITY DECODER PREFILTER "Description" 'REGEX' [globs...]
 #    SEVERITY  : high | medium | low
-#    DECODER   : none | caesar | base64 | charcodes | hex | urlenc
+#    DECODER   : none | caesar | base64 | b64url | charcodes | hex | urlenc
 #    PREFILTER : fixed string(s) a file must contain before the regex runs
 #                (speed). Several = newline-separated: $'atob\nbase64_decode'.
 #                MUST be a literal the regex itself requires, or matches are
@@ -124,6 +124,14 @@ register_checks() {
     "atob()/base64_decode() on a long hard-coded literal" \
     '(atob|base64_decode)\(\s*['\''"][A-Za-z0-9+/=]{20,}'
 
+  # A bare base64 string that IS a URL (stored, decoded elsewhere). Only the
+  # token-start prefixes: aHR0cHM6Ly = https://, aHR0cDovL = http://. URLs
+  # inside bigger blobs (other alignments) and SVG data URIs (PHN2Zy, PD94)
+  # are left out: too noisy. atob('aHR0..') itself is BASE64_LITERAL.
+  register_check BASE64_URL medium b64url $'aHR0cHM6Ly\naHR0cDovL' \
+    "Base64-encoded URL (aHR0cHM6Ly = https://): hidden link decoded at runtime" \
+    '(^|[^A-Za-z0-9+/])(aHR0cHM6Ly|aHR0cDovL)[A-Za-z0-9+/_-]{8,}'
+
   register_check FROMCHARCODE_LIST medium charcodes 'fromCharCode' \
     "fromCharCode() with a short numeric list (6-29 chars)" \
     'fromCharCode\(\s*[0-9]{2,3}(\s*,\s*[0-9]{2,3}){5,28}\s*\)'
@@ -176,6 +184,8 @@ register_checks() {
 register_allowlist() {
   allow '(^|/)plugins/wordfence/' 'CHARCODE_SHIFT,CHARCODE_ARITH,BASE64_LITERAL,FROMCHARCODE_LIST' \
     "Wordfence bundles legit charcode/base64 code"
+  allow '(^|/)plugins/superb-(blocks|helper-pro)/.*reveal-button(/index)?\.js$' 'CHARCODE_SHIFT,CHARCODE_ARITH' \
+    "Superb Reveal Button: btoa + charCode +/-1 on the block's own data-reveal text"
   allow '(^|/)simpletest/tests/upgrade/[^/]*\.database\.php\.gz$' 'EXPOSED_PHP' \
     "Drupal core upgrade-test fixtures (generic sample DBs)"
 }
@@ -194,6 +204,12 @@ classify_EXPOSED_PHP() {
     my $sz = -s $f;
     if (!$sz) { print "low\tempty file\t$f\n"; next }
     my $c = ""; if (open(my $h, "<", $f)) { read($h, $c, 262144); close $h }
+    # Shipped templates/samples/tool configs (x.php.in, x.php.dist,
+    # x.php_example, .php_cs.dist) are not backups of live files: skip them
+    # unless they hold credentials or code a webshell needs.
+    if ($f =~ /\.php([._-](in|dist|example|sample|tpl)|_cs|-cs-fixer)(\.dist)?$/i
+        && $c !~ /DB_PASSWORD|DB_USER|AUTH_KEY|\beval\s*\(|\bassert\s*\(|base64_decode|gzinflate|str_rot13|\$_(GET|POST|REQUEST|COOKIE|FILES)|\b(system|exec|passthru|shell_exec|popen|proc_open)\s*\(/i) {
+      print "skip\tshipped template/sample/tool config, no credentials or exec code\t$f\n"; next }
     if ($c =~ /<\?(php|=)/i) { print "high\tcontains PHP code\t$f\n"; next }
     my $head = substr($c, 0, 2048);
     my $bin  = $head =~ /\x00/ || $head =~ /^(\x89PNG|GIF8|\xff\xd8)/;
@@ -237,6 +253,75 @@ classify_UPLOADS_PHP() {
 }
 
 # -----------------------------------------------------------------------------
+#  MATCH RATERS — rate_<ID>: one match on stdin as "pre US match US post"
+#  (US = \x1f; pre/post = CTX_BEFORE/CTX_AFTER chars around it), print
+#  "sev<TAB>note" to override the check's severity for that match, or nothing
+#  to keep it. Judge the CONTENT, never the path or package: a skip must hold
+#  for any file. A file is ignored only if every match in it is rated skip.
+#  Every rule needs a malicious look-alike in tests/samples (see HANDOVER.md).
+# -----------------------------------------------------------------------------
+# Real text/code of 30+ chars always repeats characters; a run where every
+# byte is distinct is a lookup table (e.g. symfony Normalizer $ASCII). Using
+# such a table to build code is caught by PHP_CHAR_ASSEMBLY.
+rate_HEX_BLOB() {
+  perl -ne '
+    chomp; my (undef, $m) = split /\x1f/, $_, 3;
+    my @c = map { hex } $m =~ /\\x([0-9a-fA-F]{1,2})/g; my %u; @u{@c} = ();
+    print "skip\tcharacter lookup table (all ", scalar @c, " chars distinct), not hidden text\n"
+      if @c >= 30 && keys %u == @c;'
+}
+
+# Decode the literal. Skip a plain image (tracking pixel, icon) unless code
+# is hidden in it (GIF89a<?php ... trick), and a short opaque ID/key: only
+# letters+digits, both present, 12-40 chars, so it can't be a URL, a PHP
+# function name (those need _ or are shorter) or code.
+rate_BASE64_LITERAL() {
+  (( HAVE_B64 )) || { cat >/dev/null; return 0; }
+  perl -MMIME::Base64 -ne '
+    chomp; my (undef, $m) = split /\x1f/, $_, 3;
+    my ($b) = $m =~ /([A-Za-z0-9+\/=]{20,})$/ or exit;
+    my $d = decode_base64($b);
+    if ($d =~ /^(GIF8[79]a|\x89PNG\r\n|\xff\xd8\xff|RIFF....WEBP)/s
+        && $d !~ /<\?|<script|eval|base64|\$_|function/i) {
+      print "skip\tembedded image (", length $d, " bytes), no code inside\n" }
+    elsif ($d =~ /^[A-Za-z0-9]{12,40}$/ && $d =~ /[A-Za-z]/ && $d =~ /[0-9]/) {
+      print "skip\topaque ID/key (", length $d, " chars), not code or a URL\n" }'
+}
+
+# Ordinary character maths, not a char-shift decoder. A real shift (+/-1..25
+# whose result is used) still matches; anything fed straight into
+# fromCharCode() is CHARCODE_SHIFT (HIGH, no rater).
+rate_CHARCODE_ARITH() {
+  perl -ne '
+    chomp; my ($p, $m, $q) = split /\x1f/, $_, 3; $q //= "";
+    my ($idx, $op, $n, $rest) = $m =~ /^charCodeAt\(([^)]*)\)\s*([-+^])\s*([0-9]+)(.*)$/ or exit;
+    my $after = $rest . $q;
+    my $why =
+      ($op eq "-" && $n =~ /^(32|48|55|64|65|87|96|97)$/)
+        ? "ASCII anchor -$n (digit/letter to number)"
+      : $p =~ /[\x27"].[\x27"]\.$/                       ? "maths on a char literal (\"A\".charCodeAt)"
+      : $after =~ /^\s*(===?|!==?|<=?|>=?)/              ? "compared, not turned into a character"
+      : $idx =~ /\(/                                     ? "arithmetic on the index, not the char code"
+      : ($op eq "+" && $n == 1 && $idx eq "0" && $q =~ /^.{0,40}charCodeAt\(0\)\s*-\s*1(?![0-9])/)
+     || ($op eq "-" && $n == 1 && $idx eq "0" && $p =~ /charCodeAt\(0\)\s*\+\s*1[^0-9].{0,40}$/)
+                                                          ? "character-range bounds (a-z expansion)"
+      : "";
+    print "skip\t$why\n" if $why;'
+}
+
+# Copying array elements in order ($c['col'][1].$c['col'][2].$c['col'][3]...,
+# mPDF colours) is not char-picking: spelling hidden code from a lookup table
+# jumps around it ($t['k'][77].$t['k'][40]...). Skip only when every index is
+# exactly the previous one + 1.
+rate_PHP_CHAR_ASSEMBLY() {
+  perl -ne '
+    chomp; my (undef, $m) = split /\x1f/, $_, 3;
+    my @i = $m =~ /\[([0-9]{1,3})\](?=\s*(?:\.|$))/g;
+    my $seq = @i >= 4; for my $k (1 .. $#i) { $seq = 0 if $i[$k] != $i[$k-1] + 1 }
+    print "skip\tconsecutive array elements copied in order ($i[0]..$i[-1]), not char-picking\n" if $seq;'
+}
+
+# -----------------------------------------------------------------------------
 #  DECODERS — read a code window on stdin, print one decoded string per line
 # -----------------------------------------------------------------------------
 decode_none() { cat >/dev/null; }
@@ -266,6 +351,16 @@ decode_base64() {
       my $d = decode_base64($2);
       next unless $d =~ /^[\x20-\x7e\t\r\n]+$/;
       $d =~ s/\s+/ /g; print substr($d, 0, 300), "\n";
+    }'
+}
+
+decode_b64url() {  # bare base64 tokens that start with http(s):// (also URL-safe -_)
+  (( HAVE_B64 )) || { cat >/dev/null; return 0; }
+  perl -MMIME::Base64 -ne '
+    while (/(?<![A-Za-z0-9+\/])((?:aHR0cHM6Ly|aHR0cDovL)[A-Za-z0-9+\/_-]{8,}=*)/g) {
+      (my $t = $1) =~ tr{-_}{+/};
+      my $d = decode_base64($t); $d =~ s/[^\x20-\x7e].*//s;
+      print substr($d, 0, 300), "\n" if length $d > 8;
     }'
 }
 
@@ -658,7 +753,8 @@ run_check() {
         close ARGV if eof;                          # reset $. per file
       ' 2>>"$ERRF" | mapfile -t hits
 
-  local US=$'\x1f' hit file rest ln pre mat post key window x decoded
+  local US=$'\x1f' hit file rest ln pre mat post key window x decoded rated hrank
+  local -A auto_skip kept_f
   for hit in "${hits[@]}"; do
     file=${hit%%"$US"*}; rest=${hit#*"$US"}
     ln=${rest%%"$US"*};  rest=${rest#*"$US"}
@@ -667,6 +763,13 @@ run_check() {
     post=${rest%%"$US"*}; window=${rest#*"$US"}
 
     if is_allowed "$file" "$id"; then note_supp "$id" "$file"; continue; fi
+    hrank=$rank
+    if declare -F "rate_$id" >/dev/null; then   # per-match severity (see MATCH RATERS)
+      rated=$(printf '%s\x1f%s\x1f%s\n' "$pre" "$mat" "$post" | "rate_$id")
+      if [[ ${rated%%$'\t'*} == skip ]]; then auto_skip[$file]=${rated#*$'\t'}; continue; fi
+      [[ -n $rated ]] && hrank=${SEV_RANK[${rated%%$'\t'*}]:-$rank}
+    fi
+    kept_f[$file]=1
     key="$file:$ln"
     [[ ${REC_SEEN[$key]} == *" $id "* ]] && continue    # same check, same line
     REC_SEEN[$key]+=" $id "
@@ -680,8 +783,13 @@ run_check() {
       done
     fi
     HIT_PRE=$pre; HIT_MAT=$mat; HIT_POST=$post
-    record_hit "$id" "$file" "$rank" "$ln" "" "$decoded"
-    (( VERBOSE )) && print_finding "$rank" "$file" "$ln" "$id" "$pre" "$mat" "$post" "$decoded"
+    record_hit "$id" "$file" "$hrank" "$ln" "" "$decoded"
+    (( VERBOSE )) && print_finding "$hrank" "$file" "$ln" "$id" "$pre" "$mat" "$post" "$decoded"
+  done
+  # a file is ignored only if EVERY match in it was rated skip
+  for file in "${!auto_skip[@]}"; do
+    [[ -n ${kept_f[$file]} ]] && continue
+    ALLOW_MATCH="auto: ${auto_skip[$file]}"; note_supp "$id" "$file"
   done
 }
 
@@ -759,7 +867,7 @@ verify_results() {
       for d in "${EXCLUDE_DIRS[@]}"; do args+=(--exclude-dir="$d"); done
       if (( SKIP_CORE )); then for d in "${CORE_DIRS[@]}"; do args+=(--exclude-dir="$d"); done; fi
       grep -rlIE "${args[@]}" -- "${CHECK_RE[$id]}" . 2>/dev/null | while IFS= read -r f; do
-        f=${f#./}; is_allowed "$f" "$id" || expected+=("$f")
+        f=${f#./}; is_allowed "$f" "$id" || [[ -n ${SUPP_SEEN[$id|$f]} ]] || expected+=("$f")
       done
     fi
     printf '%s' "${CF_FILES[$id]}" | while IFS= read -r f; do [[ -n $f ]] && got+=("$f"); done

