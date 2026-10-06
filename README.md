@@ -13,18 +13,23 @@ decodes hidden URLs, and shows the flagged code.
 From inside the site folder (`public_html`, `httpdocs`, `www`, …):
 
 ```bash
-curl --proto '=https' -fsSL https://raw.githubusercontent.com/<org>/fixed-malscan/main/fixed-malscan.sh | bash
+curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash
 ```
 
 With options, or for another folder:
 
 ```bash
-curl --proto '=https' -fsSL <raw URL> | bash -s -- -v                       # all files + full code context
-curl --proto '=https' -fsSL <raw URL> | bash -s -- --watch dom1.com,dom2.net # also look for these domains
-curl --proto '=https' -fsSL <raw URL> | bash -s -- /path/to/site --verify    # another folder + cross-check
+# all files + full code context
+curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash -s -- -v
+# also look for these domains
+curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash -s -- --watch dom1.com,dom2.net
+# another folder + cross-check
+curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash -s -- /path/to/site --verify
 ```
 
-No curl? Use `wget -qO- <raw URL> | bash`.
+No curl? Use `wget -qO- https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash`.
+
+A specific release instead of the latest: replace `main` with the tag, e.g. `.../fixed-malscan/v2.6/fixed-malscan.sh`.
 
 ## Options
 
