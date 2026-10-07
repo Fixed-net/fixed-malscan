@@ -806,7 +806,7 @@ HIT_PRE=""; HIT_MAT=""; HIT_POST=""; SECTION_ORDER=(); SHOWN_CODE=""; WIDTH=140
 declare -A SEV_RANK=([high]=3 [medium]=2 [low]=1)
 CANDIDATES=(); ALLOW_RE=(); ALLOW_CHECKS=(); ALLOW_WHY=(); PRUNE=(); PRE_ARGS=()
 STEP=0; STEPS=0; PROGRESS_DOTS=0; NO_DOTS=0; ALLOW_MATCH=""; NOW=0; ERRF=""
-TMPD=""; HAVE_B64=1; WARNINGS=(); WATCH=()
+TMPD=""; HAVE_B64=1; WARNINGS=(); WATCH=(); TOTAL_FILES=0
 KEEP=0; NO_COLOR=0; VERBOSE=0; VERIFY=0; SKIP_CORE=1; USE_ALLOW=1; REPORT=""; TARGET="."
 
 die() {  # fatal error: clean up, explain, exit 2
@@ -1055,6 +1055,9 @@ add_domains() {  # $1 decoded string, $2 file
 gather_candidates() {
   local id g d all_files=0
   local -a args eargs globs
+  # total files in scope, for the summary (one cheap walk: ~0.15 s per 80k files)
+  build_prune
+  TOTAL_FILES=$(find . "${PRUNE[@]}" -type f -printf . 2>/dev/null | wc -c)
   for id in "${CHECK_IDS[@]}"; do
     [[ ${#SELECTED[@]} -eq 0 || -n ${SELECTED[$id]} ]] || continue
     [[ ${CHECK_TYPE[$id]} == file ]] && continue
@@ -1497,8 +1500,8 @@ print_summary() {
   for f in "${!FILE_SEV[@]}"; do
     case ${FILE_SEV[$f]} in 3) fh=$((fh+1));; 2) fm=$((fm+1));; *) fl=$((fl+1));; esac
   done
-  printf '\n  Affected files: %s%d high%s, %s%d medium%s, %d low  (%d total)\n' \
-    "$RED" "$fh" "$RST" "$YEL" "$fm" "$RST" "$fl" "${#FILE_SEV[@]}"
+  printf '\n  Affected files: %s%d high%s, %s%d medium%s, %d low  (%d total, %d files checked)\n' \
+    "$RED" "$fh" "$RST" "$YEL" "$fm" "$RST" "$fl" "${#FILE_SEV[@]}" "$TOTAL_FILES"
   if (( total_supp )); then
     printf '  %sIgnored: %d file(s) matched a check but are known-legit (allowlist rules, or\n  auto-ignored like saved HTML pages) and were left out above. -v lists them with\n  the reason; --no-allowlist includes allowlisted ones.%s\n' \
       "$DIM" "${#SUPP_FILES[@]}" "$RST"
@@ -1509,10 +1512,10 @@ print_summary() {
       done
     fi
   fi
-  (( SKIP_CORE )) && printf '  %sSkipped WP core (%s) - run: wp core verify-checksums%s\n' \
-    "$DIM" "${CORE_DIRS[*]}" "$RST"
-  printf '  %sScanned %d candidate file(s) in %ds · "new" = modified in the last %d days%s\n' \
-    "$DIM" "${#CANDIDATES[@]}" "$SECONDS" "$RECENT_DAYS" "$RST"
+  (( SKIP_CORE )) && printf '  %sSkipped WP core (%s) - %s%srun: wp core verify-checksums%s\n' \
+    "$DIM" "${CORE_DIRS[*]}" "$RST" "$YEL" "$RST"
+  printf '  %sChecked %d files (%d contain code patterns) in %ds · "new" = modified in the last %d days%s\n' \
+    "$DIM" "$TOTAL_FILES" "${#CANDIDATES[@]}" "$SECONDS" "$RECENT_DAYS" "$RST"
   printf '\n  %sFindings are indicators for review, not confirmed infections. Verify before reporting to the client.%s\n' \
     "$YEL" "$RST"
 
