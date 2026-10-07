@@ -1045,7 +1045,8 @@ add_domains() {  # $1 decoded string, $2 file
   while IFS= read -r dom; do
     [[ -n $dom ]] || continue
     dom=${dom,,}
-    [[ ${DOMAINS[$dom]} == *"$2 "* ]] || DOMAINS[$dom]+="$2 "
+    # \x1e-separated: paths may contain spaces
+    [[ $'\x1e'${DOMAINS[$dom]} == *$'\x1e'"$2"$'\x1e'* ]] || DOMAINS[$dom]+="$2"$'\x1e'
   done
 }
 
@@ -1325,6 +1326,12 @@ verify_results() {
 # -----------------------------------------------------------------------------
 #  SUMMARY
 # -----------------------------------------------------------------------------
+fmt_domain_file() {  # Hidden domains: dim path, .js extension in red
+  local f=${1//[$'\x01'-$'\x1f'$'\x7f']/?}
+  if [[ ${f,,} == *.js ]]; then printf '%s%s%s%s.js%s' "$DIM" "${f:0:${#f}-3}" "$RST" "$RED" "$RST"
+  else printf '%s%s%s' "$DIM" "$f" "$RST"; fi
+}
+
 fmt_file() {  # path with the file name in bold; $2=1 also colours the extension
   local f=${1//[$'\x01'-$'\x1f'$'\x7f']/?} base dir name ext
   base=${f##*/}; dir=${f:0:${#f}-${#base}}
@@ -1468,10 +1475,20 @@ print_summary() {
   fi
 
   if (( ${#DOMAINS[@]} )); then
-    printf '\n%sHidden domains%s %s(decoded from obfuscated code - suspicious until checked):%s\n' "$BLD" "$RST" "$DIM" "$RST"
-    printf '%s\n' "${!DOMAINS[@]}" | sort | while IFS= read -r f; do
-      printf '  %s%s%s  %s<- %s%s' "$RED" "$f" "$RST" "$DIM" "${DOMAINS[$f]% }" "$RST"
-      on_watchlist "$f" && printf '  %s(on your watchlist)%s' "$CYN" "$RST"
+    printf '\n%sHidden domains%s %s(decoded from obfuscated code, or redirect targets - suspicious until checked):%s\n' "$BLD" "$RST" "$DIM" "$RST"
+    # code (.js/.php...) first, .htaccess-only domains last; within a domain the
+    # same order; .js extensions in red to tell script loaders apart
+    local hd hx hk hs; local -a hf
+    for hd in "${!DOMAINS[@]}"; do
+      hk=1; IFS=$'\x1e' read -ra hf <<< "${DOMAINS[$hd]}"
+      for hx in "${hf[@]}"; do [[ $hx == *.htaccess ]] || hk=0; done
+      printf '%s\t%s\n' "$hk" "$hd"
+    done | sort -t$'\t' -k1,1n -k2,2 | while IFS=$'\t' read -r hk hd; do
+      IFS=$'\x1e' read -ra hf <<< "${DOMAINS[$hd]}"
+      printf '  %s%s%s  %s<-%s ' "$RED" "$hd" "$RST" "$DIM" "$RST"; hs=""
+      for hx in "${hf[@]}"; do [[ $hx == *.htaccess ]] || { printf '%s' "$hs"; fmt_domain_file "$hx"; hs=", "; }; done
+      for hx in "${hf[@]}"; do [[ $hx == *.htaccess ]] && { printf '%s' "$hs"; fmt_domain_file "$hx"; hs=", "; }; done
+      on_watchlist "$hd" && printf '  %s(on your watchlist)%s' "$CYN" "$RST"
       printf '\n'
     done
     printf '\n  %sCheck each with VirusTotal and GTMetrix (several test locations) to see what it serves.%s\n' "$DIM" "$RST"

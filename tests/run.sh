@@ -32,8 +32,9 @@ awk '
   s && /^    [^ ].* \[[A-Z0-9_,]+\] - / {
     p = $1; ids = $2; gsub(/[][]/, "", ids)
     n = split(ids, a, ","); for (i = 1; i <= n; i++) print "ignored", a[i], p; next }
-  #   domain  <- path                       (Hidden domains)
-  s && /^  [^ ]+  <- / { print "domain", $1, $3 }
+  #   domain  <- path, path                 (Hidden domains)
+  s && /^  [^ ]+  <- / { d = $1; r = $0; sub(/^  [^ ]+  <- /, "", r)
+    n = split(r, a, ", "); for (i = 1; i <= n; i++) print "domain", d, a[i]; next }
 ' "$tmp/out" | sort -u > "$tmp/got"
 
 if [[ ${1:-} == --update ]]; then
