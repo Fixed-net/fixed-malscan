@@ -12,7 +12,7 @@
 #  dir, and deleting this script itself when it was run from a file (--keep).
 #
 #  Run without saving it, from inside the site folder (one-liner):
-#      curl --proto '=https' -fsSL https://raw.githubusercontent.com/<org>/fixed-malscan/main/fixed-malscan.sh | bash
+#      curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash
 #      ... | bash -s -- [DIR] [options]        # with options / another folder
 #
 #  Needs: bash >= 4.2, perl, GNU grep/find/xargs/coreutils (standard on Linux
@@ -21,7 +21,7 @@
 #  FIXED-MALSCAN-SELF-DELETE-MARKER  (only a file containing this line is deleted)
 # =============================================================================
 
-VERSION="2.7"
+VERSION="2.8"
 if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || \
    { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 2 ]; }; then
   echo "fixed-malscan: bash >= 4.2 required (run it with bash, not sh)" >&2; exit 2
@@ -1474,10 +1474,10 @@ Usage: fixed-malscan.sh [options] [DIR]        (DIR defaults to current dir)
   -h, --help           this help
 
 Examples (from inside the site folder):
-  curl --proto '=https' -fsSL <raw URL> | bash
-  curl --proto '=https' -fsSL <raw URL> | bash -s -- -v
-  curl --proto '=https' -fsSL <raw URL> | bash -s -- --watch userstatics.com,bad.example
-  curl --proto '=https' -fsSL <raw URL> | bash -s -- /path/to/site --verify
+  curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash
+  curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash -s -- -v
+  curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash -s -- --watch userstatics.com,bad.example
+  curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash -s -- /path/to/site --verify
 
 Findings are indicators for review, not confirmed infections.
 

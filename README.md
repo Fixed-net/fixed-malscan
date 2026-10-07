@@ -2,8 +2,12 @@
 
 Fast, **read-only** scanner for WordPress (and other PHP) sites. It finds obfuscated
 JS/PHP injections (disguised script loaders, webshells, `$GLOBALS` hex tricks,
-char-by-char code) and exposed files (wp-config / PHP backups, PHP in uploads),
-decodes hidden URLs, and shows the flagged code.
+char-by-char code, `chr()` lists), webshell techniques (disable_functions /
+open_basedir bypasses, reading system files), cloaking and redirects (different
+content for Google, bots, mobile or first-time visitors; `.htaccess` and template
+redirects), fake images (PHP/HTML saved as `.jpg`/`.png`), unknown PHP files in the
+WordPress root and exposed files (wp-config / PHP backups, PHP in uploads), decodes
+hidden URLs, and shows the flagged code.
 
 > Findings are **indicators for review, not confirmed infections.**
 > Always verify before reporting to a client.
@@ -29,7 +33,7 @@ curl --proto '=https' -fsSL https://raw.githubusercontent.com/Fixed-net/fixed-ma
 
 No curl? Use `wget -qO- https://raw.githubusercontent.com/Fixed-net/fixed-malscan/main/fixed-malscan.sh | bash`.
 
-A specific release instead of the latest: replace `main` with the tag, e.g. `.../fixed-malscan/v2.6/fixed-malscan.sh`.
+A specific release instead of the latest: replace `main` with the tag, e.g. `.../fixed-malscan/v2.7/fixed-malscan.sh`.
 
 ## Options
 
@@ -55,7 +59,20 @@ Exit codes: `0` clean · `1` findings · `2` error (stops with a `[x]` message).
   and any **decoded** value. `also` lines show another part of the same injection.
 - **Hidden domains** were decoded from obfuscated code. Legit code rarely disguises URLs,
   so treat them as suspicious until checked on VirusTotal and GTMetrix (several test locations).
+- `reason` lines say why a check fired (e.g. *visitors by referrer (google) get: redirect
+  -> example.com*); the target domain is also listed under Hidden domains.
 - `new` = file modified in the last 7 days.
+
+### Known limits
+
+- Fake images: only the first 256 KB and the last 64 KB of each image are read (speed);
+  PHP hidden in the middle of a large image's pixel data is not seen.
+- Cloaking: the redirect/output must follow the visitor test within 12 lines (40 for
+  "came from a search engine"); one moved into another function is not linked.
+- Plain redirects in plugin PHP/JS are not checked (plugins legitimately link to their own
+  services); only `.htaccess`, inline template `<script>`/meta refresh and first-visit
+  (cookie) redirects are.
+- Only files are scanned: injections stored in the database (`wp_options`, posts) are not.
 
 ## Safety
 
@@ -73,11 +90,13 @@ Everything is in the `CHECK REGISTRY` section of the script; each check is one l
 - `register_check` – a code pattern (regex), optional decoder
 - `register_file_check` – a file name/path rule, optional `classify_<ID>` for per-file severity
 - `register_signatures` – a list of plain words (no regex needed)
-- `rate_<ID>` – optional: rate each match by its content (other severity, or `skip`)
+- `register_patterns` – a list of `LITERAL REGEX` pairs (e.g. the webshell technique list)
+- `rate_<ID>` – optional: rate each match by its content (other severity, `skip` = ignored,
+  `ok` = clean); gets every match of the check at once, with file and line
 - `allow` – hide a known false positive for specific checks (last resort: prefer `rate_<ID>`)
 
 A broken regex stops the run; `--verify` shows `DIFF` if a new check would miss matches.
 `bash tests/run.sh` scans the synthetic samples in `tests/samples` (malicious ones must be flagged,
 known false positives must stay quiet) and compares every result with `tests/expected.txt`.
 Add a sample for each new check or false-positive fix (`tests/make-samples.pl`).
-Bump `VERSION` in the script and create a matching release tag (e.g. `v2.6`) for each change.
+Bump `VERSION` in the script and create a matching release tag (e.g. `v2.8`) for each change.
