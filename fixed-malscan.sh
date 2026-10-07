@@ -176,6 +176,13 @@ register_checks() {
     "Executable PHP inside wp-content/uploads" \
     '*/wp-content/uploads/*.php'
 
+  # WordPress's own layout, not a list of bad names: in a WP root (has
+  # wp-settings.php + wp-includes/) and in its wp-content/ only a fixed set
+  # of core files / drop-ins exists. Anything else there is a planted file.
+  register_file_check ROOT_PHP_UNKNOWN medium \
+    "Unknown PHP file in the WordPress root or wp-content/ (not core, not a drop-in)" \
+    '*.php'
+
   # ---- low: broad safety net -----------------------------------------------
   register_check CHARCODE_ARITH low none 'charCodeAt' \
     "charCodeAt() arithmetic / XOR with a small constant (broad)" \
@@ -267,6 +274,44 @@ classify_FAKE_IMAGE() {
     } elsif ($text) {
       print "medium\ttext file disguised as an image (no image data)\t$f\n";
     } else { print "ok\tother binary format\t$f\n" }'
+}
+
+# Core root files of WordPress and the wp-content drop-ins (all versions
+# since 3.x). Dirs that are not a WP root / wp-content are not judged.
+# wordfence-waf.php (Wordfence "optimized" WAF loader, very common) is
+# skipped only while it holds nothing but its own include of the WAF.
+classify_ROOT_PHP_UNKNOWN() {
+  perl -ne '
+    BEGIN {
+      %core = map { $_ => 1 } qw(index.php wp-activate.php wp-blog-header.php
+        wp-comments-post.php wp-config.php wp-config-sample.php wp-cron.php
+        wp-links-opml.php wp-load.php wp-login.php wp-mail.php wp-settings.php
+        wp-signup.php wp-trackback.php xmlrpc.php);
+      %dropin = map { $_ => 1 } qw(index.php advanced-cache.php object-cache.php
+        db.php db-error.php install.php maintenance.php php-error.php
+        fatal-error-handler.php sunrise.php blog-deleted.php blog-inactive.php
+        blog-suspended.php);
+    }
+    chomp; my $f = $_; next unless length $f;
+    my ($d, $b) = $f =~ m{^(?:(.*)/)?([^/]+)$}; $d = "." unless defined $d;
+    $root{$d} //= (-f "$d/wp-settings.php" && -d "$d/wp-includes") ? 1 : 0;
+    if (!exists $wpc{$d}) {
+      my ($p, $n) = $d =~ m{^(?:(.*)/)?([^/]+)$}; $p = "." unless defined $p;
+      $wpc{$d} = ($n eq "wp-content" && -f "$p/wp-settings.php") ? 1 : 0;
+    }
+    if    ($root{$d} && !$core{lc $b}) { $where = "WordPress root" }
+    elsif ($wpc{$d}  && !$dropin{lc $b}) { $where = "wp-content/" }
+    else  { print "ok\tknown core file / drop-in, or not a WP root\t$f\n"; next }
+    if ($root{$d} && lc $b eq "wordfence-waf.php") {
+      my $c = ""; if (open(my $h, "<", $f)) { local $/; $c = <$h>; close $h }
+      $c =~ s{/\*.*?\*/}{}gs; $c =~ s{(^|\s)(//|\#)[^\n]*}{$1}g; $c =~ s{<\?php|\?>}{}g;
+      $c =~ s{if\s*\(\s*file_exists\s*\(\s*__DIR__\s*\.\s*[\x27"]/wp-content/plugins/wordfence/waf/bootstrap\.php[\x27"]\s*\)\s*\)}{}g;
+      $c =~ s{define\s*\(\s*[\x27"]WFWAF_LOG_PATH[\x27"]\s*,\s*__DIR__\s*\.\s*[\x27"]/wp-content/wflogs/[\x27"]\s*\)\s*;}{}g;
+      $c =~ s{include_once\s*\(?\s*__DIR__\s*\.\s*[\x27"]/wp-content/plugins/wordfence/waf/bootstrap\.php[\x27"]\s*\)?\s*;}{}g;
+      $c =~ s{[\s{}]+}{}g;
+      if ($c eq "") { print "skip\tWordfence WAF loader (only includes the Wordfence WAF)\t$f\n"; next }
+    }
+    print "medium\tunknown PHP file in the $where\t$f\n";'
 }
 
 classify_EXPOSED_WPCONFIG() {

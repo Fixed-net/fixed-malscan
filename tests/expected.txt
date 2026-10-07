@@ -48,6 +48,7 @@ ignored EXPOSED_PHP legit/php/Template.php.in
 ignored EXPOSED_PHP legit/php/helper.php_example
 ignored HEX_BLOB legit/php/hex-lookup-table.php
 ignored PHP_CHAR_ASSEMBLY legit/php/array-copy-in-order.php
+ignored ROOT_PHP_UNKNOWN wproot/wordfence-waf.php
 ignored UPLOADS_PHP wp-content/uploads/placeholder/index.php
 low CHARCODE_ARITH legit/js/rot13.js
 low CHARCODE_ARITH malicious/js/char-maths-plus-shift.js
@@ -75,3 +76,7 @@ med HEX_BLOB malicious/php/hex-blob-one-repeat.php
 med HEX_BLOB malicious/php/hex-blob-table-plus-injection.php
 med HEX_BLOB malicious/php/hex-blob.php
 med JS_OBFUSCATOR malicious/js/obfuscator.js
+med ROOT_PHP_UNKNOWN wproot/index2.php
+med ROOT_PHP_UNKNOWN wproot/wp-confg.php
+med ROOT_PHP_UNKNOWN wproot/wp-content/hidden.php
+med ROOT_PHP_UNKNOWN wproot2/wordfence-waf.php
