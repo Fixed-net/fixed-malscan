@@ -247,3 +247,5 @@ w('legit/js/client-hash.js', $H . 'var id=function(){for(var a=navigator.userAge
   'var g=/google|android/i;var s=document.createElement("script");s.src="https://stats.example.com/a.js";' . "\n");
 w('legit/js/browser-reload.js', $H . '/*' . "\n" . '* In some browsers the reload keeps cached data, causing e.g. Google Maps to load anyway.' . "\n" . '*/' . "\n" .
   'function reload() {' . "\n" . '  if (navigator.userAgent.toLowerCase().indexOf("firefox") > -1) {' . "\n" . '    window.location.href = url.toString();' . "\n  }\n}\n");
+w('malicious/php/cloak-ip-halt-later.php', $P . '$r = array("66.249.64.0", "66.249.95.255"); if (in_range($ip, $r)) { echo $spam; }' . "\n__halt_compiler();\n");
+w('wp-content/wflogs/config-synced.php', "<?php exit('Access denied'); __halt_compiler(); ?>\n" . 'a:1:{s:9:"whitelist";s:80:"[\"47.243.240\/28\",\"66.249.64.0\/27\",\"66.249.64.128\/27\",\"64.233.160.0\/19\"]";}' . "\n");

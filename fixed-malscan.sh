@@ -514,6 +514,20 @@ rate_PHP_CHAR_ASSEMBLY() {
     print "$.\tskip\tconsecutive array elements copied in order ($i[0]..$i[-1]), not char-picking\n" if $seq;'
 }
 
+# A PHP file whose first statement is exit/die followed by __halt_compiler()
+# can never run what comes after: inert data (Wordfence wflogs/*.php store
+# Google's crawler ranges this way). Anything else with the ranges: HIGH.
+rate_CLOAKING_BOT_IP() {
+  perl -ne '
+    BEGIN { our ($cf, $inert) = ("", 0) }
+    chomp; my $n = $.;
+    my (undef, undef, undef, $f) = split /\x1f/;
+    if ($f ne $cf) { $cf = $f; $inert = 0; my $h0 = "";
+      if (open(my $h, "<", $f)) { read($h, $h0, 512); close $h }
+      $inert = $h0 =~ /\A\s*<\?php\s+(exit|die)\b[^;]*;\s*__halt_compiler\s*\(\s*\)\s*;/i }
+    print "$n\tok\tinert data after exit + __halt_compiler (e.g. Wordfence wflogs)\n" if $inert;'
+}
+
 # CLOAKING found a read of the referrer / user agent. Who is targeted = the
 # engine/bot/mobile/social words near it (PHP: that line + 3 lines; JS: in
 # the condition the read sits in, see js_ctl). No words -> ok. Then look for an action after it: 12 lines, or 40

@@ -49,6 +49,7 @@ high CLOAKING malicious/php/cloak-bot-remote.php
 high CLOAKING malicious/php/cloak-referer-curl-var.php
 high CLOAKING malicious/php/cloak-referer-redirect.php
 high CLOAKING wp-content/plugins/cache-plugin/injected-cloak.php
+high CLOAKING_BOT_IP malicious/php/cloak-ip-halt-later.php
 high CLOAKING_BOT_IP malicious/php/cloak-ip-ranges.php
 high EXPOSED_PHP backups/old.php.bak
 high EXPOSED_PHP backups/shell.php.dist
