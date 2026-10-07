@@ -118,6 +118,7 @@ w('malicious/php/tech-pcntl.php', $P . 'pcntl_exec("/bin/sh", array("-c", "id"))
 w('malicious/php/tech-etc-passwd.php', $P . '$u = @file_get_contents(\'/etc/passwd\');' . "\n");
 w('malicious/php/tech-user-ini.php', $P . '@file_put_contents(".user.ini", "open_basedir = /\n");' . "\n");
 w('malicious/php/tech-imap.php', $P . 'imap_open("{x.example.com:143/imap}INBOX -oProxyCommand=x", "", "");' . "\n");
+w('malicious/php/split-name.php', $P . '$c = \'F\'.\'F\'.\'I\'; if (class_exists($c)) { echo 1; }' . "\n");
 # ROOT_PHP_UNKNOWN: two tiny WP roots (wp-settings.php + wp-includes/)
 for my $r ('wproot', 'wproot2') {
   w("$r/wp-settings.php", $P); w("$r/wp-includes/version.php", $P);

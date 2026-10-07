@@ -141,6 +141,16 @@ register_checks() {
     'Chankro'        '(^|[^A-Za-z0-9_])Chankro([^A-Za-z0-9_]|$)' \
     'bypass_disablefunc' 'bypass_disablefunc'
 
+  # Names spelled one character at a time ('F'.'F'.'I' = FFI) so a plain
+  # search for the name finds nothing. Same quote type, no or single spaces
+  # (one literal per form, for the prefilter).
+  register_patterns PHP_SPLIT_STRING medium \
+    "Name spelled char by char from 3+ one-letter strings ('F'.'F'.'I')" '*.php' \
+    "'.'"   "'[A-Za-z_]'(\.'[A-Za-z_]'){2,}" \
+    "' . '" "'[A-Za-z_]'( \. '[A-Za-z_]'){2,}" \
+    '"."'   '"[A-Za-z_]"(\."[A-Za-z_]"){2,}' \
+    '" . "' '"[A-Za-z_]"( \. "[A-Za-z_]"){2,}'
+
 
   # ---- medium: suspicious, occasionally legitimate -------------------------
   register_check BASE64_LITERAL medium base64 $'atob\nbase64_decode' \

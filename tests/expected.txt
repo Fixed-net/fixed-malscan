@@ -84,6 +84,7 @@ med HEX_BLOB malicious/php/hex-blob-one-repeat.php
 med HEX_BLOB malicious/php/hex-blob-table-plus-injection.php
 med HEX_BLOB malicious/php/hex-blob.php
 med JS_OBFUSCATOR malicious/js/obfuscator.js
+med PHP_SPLIT_STRING malicious/php/split-name.php
 med ROOT_PHP_UNKNOWN wproot/index2.php
 med ROOT_PHP_UNKNOWN wproot/wp-confg.php
 med ROOT_PHP_UNKNOWN wproot/wp-content/hidden.php
