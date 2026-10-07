@@ -710,7 +710,9 @@ gather_candidates() {
   (( all_files )) && eargs=(-e '')
 
   progress "indexing files"
-  grep -rlIF "${args[@]}" "${eargs[@]}" . 2>>"$ERRF" | mapfile -t CANDIDATES
+  # via a file, not a pipe: mapfile reads a pipe one byte per syscall (slow)
+  grep -rlIF "${args[@]}" "${eargs[@]}" . 2>>"$ERRF" > "$TMPD/list"
+  mapfile -t CANDIDATES < "$TMPD/list"
   CANDIDATES=("${CANDIDATES[@]#./}")
 }
 
@@ -771,8 +773,8 @@ run_check() {
   for f in "${CANDIDATES[@]}"; do match_globs "$f" "${incs[@]}" && files+=("$f"); done
   if [[ ${CHECK_PRE[$id]} != - && ${#files[@]} -gt 0 ]]; then
     pre_args "${CHECK_PRE[$id]}"
-    printf '%s\0' "${files[@]}" | xargs -0 -r grep -lIF "${PRE_ARGS[@]}" -- 2>>"$ERRF" \
-      | mapfile -t files
+    printf '%s\0' "${files[@]}" | xargs -0 -r grep -lIF "${PRE_ARGS[@]}" -- 2>>"$ERRF" > "$TMPD/list"
+    mapfile -t files < "$TMPD/list"
   fi
   progress "$id (${#files[@]} file(s))"
   (( ${#files[@]} )) || return 0
@@ -800,7 +802,8 @@ run_check() {
           last if ++$n >= 20;                       # cap matches per line
         }
         close ARGV if eof;                          # reset $. per file
-      ' 2>>"$ERRF" | mapfile -t hits
+      ' 2>>"$ERRF" > "$TMPD/list"
+  mapfile -t hits < "$TMPD/list"
 
   local US=$'\x1f' hit file rest ln pre mat post key window x decoded rated hrank
   local -A auto_skip kept_f
@@ -857,28 +860,31 @@ file_check_args() {  # $1 id -> FC_INC / FC_EXC find expressions
 
 run_file_check() {
   local id=$1 rank=${SEV_RANK[${CHECK_SEV[$1]}]} f sv note
-  local -a hits kept
+  local -a hits
   build_prune; file_check_args "$id"
   progress "$id"
-  find . "${PRUNE[@]}" -type f \( "${FC_INC[@]}" \) "${FC_EXC[@]}" -print 2>>"$ERRF" | mapfile -t hits
-
-  for f in "${hits[@]}"; do
-    f=${f#./}
-    if is_allowed "$f" "$id"; then note_supp "$id" "$f"; continue; fi
-    kept+=("$f")
-  done
-  (( ${#kept[@]} )) || return 0
+  find . "${PRUNE[@]}" -type f \( "${FC_INC[@]}" \) "${FC_EXC[@]}" -print 2>>"$ERRF" > "$TMPD/list"
+  mapfile -t hits < "$TMPD/list"
+  hits=("${hits[@]#./}")
 
   if declare -F "classify_$id" >/dev/null; then
-    printf '%s\n' "${kept[@]}" | "classify_$id" | while IFS=$'\t' read -r sv note f; do
-      [[ $sv == ok ]] && { FC_CLEAN[$id|$f]=1; continue; }
+    # classify first: broad checks (every image / every .php) drop most files
+    # as "ok", so the allowlist is only consulted for the rest
+    # ("ok" lines go to a file, read back only by --verify: a bash read loop
+    # over 40k lines costs seconds)
+    (( ${#hits[@]} )) || return 0
+    printf '%s\n' "${hits[@]}" | "classify_$id" > "$TMPD/classified"
+    grep '^ok'$'\t' "$TMPD/classified" | cut -f3- > "$TMPD/clean.$id"
+    grep -v '^ok'$'\t' "$TMPD/classified" | while IFS=$'\t' read -r sv note f; do
+      if is_allowed "$f" "$id"; then note_supp "$id" "$f"; continue; fi
       if [[ $sv == skip ]]; then ALLOW_MATCH="auto: $note"; note_supp "$id" "$f"; continue; fi
       record_hit "$id" "$f" "${SEV_RANK[$sv]:-$rank}" "" "$note" ""
       (( VERBOSE )) && { clear_line; printf '\n%s %s%s%s  %s%s · %s%s\n' "$(sev_label "${SEV_RANK[$sv]:-$rank}")" \
         "$MAG" "$f" "$RST" "$DIM" "$note" "$id" "$RST"; }
     done
   else
-    for f in "${kept[@]}"; do
+    for f in "${hits[@]}"; do
+      if is_allowed "$f" "$id"; then note_supp "$id" "$f"; continue; fi
       record_hit "$id" "$f" "$rank" "" "" ""
       (( VERBOSE )) && { clear_line; printf '\n%s %s%s%s  %s%s%s\n' "$(sev_label "$rank")" \
         "$MAG" "$f" "$RST" "$DIM" "$id" "$RST"; }
@@ -898,6 +904,7 @@ verify_results() {
     args=(); expected=(); got=()
     STEP=$(( STEP + 1 )); progress "verifying $id"
     if [[ ${CHECK_TYPE[$id]} == file ]]; then
+      [[ -f $TMPD/clean.$id ]] && while IFS= read -r f; do FC_CLEAN[$id|$f]=1; done < "$TMPD/clean.$id"
       set -f; vinc=(${CHECK_INC[$id]}); vex=(${CHECK_EXCL[$id]}); set +f
       build_prune
       find . "${PRUNE[@]}" -type f -print 2>/dev/null | while IFS= read -r f; do

