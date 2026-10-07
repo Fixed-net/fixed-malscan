@@ -1500,8 +1500,9 @@ print_summary() {
   for f in "${!FILE_SEV[@]}"; do
     case ${FILE_SEV[$f]} in 3) fh=$((fh+1));; 2) fm=$((fm+1));; *) fl=$((fl+1));; esac
   done
-  printf '\n  Affected files: %s%d high%s, %s%d medium%s, %d low  (%d total, %d files checked)\n' \
-    "$RED" "$fh" "$RST" "$YEL" "$fm" "$RST" "$fl" "${#FILE_SEV[@]}" "$TOTAL_FILES"
+  local took; printf -v took '%02d:%02d' $(( SECONDS / 60 )) $(( SECONDS % 60 ))   # mm:ss, whole run
+  printf '\n  Affected files: %s%d high%s, %s%d medium%s, %d low  (%d total, %d files checked in %s)\n' \
+    "$RED" "$fh" "$RST" "$YEL" "$fm" "$RST" "$fl" "${#FILE_SEV[@]}" "$TOTAL_FILES" "$took"
   if (( total_supp )); then
     printf '  %sIgnored: %d file(s) matched a check but are known-legit (allowlist rules, or\n  auto-ignored like saved HTML pages) and were left out above. -v lists them with\n  the reason; --no-allowlist includes allowlisted ones.%s\n' \
       "$DIM" "${#SUPP_FILES[@]}" "$RST"
@@ -1514,8 +1515,8 @@ print_summary() {
   fi
   (( SKIP_CORE )) && printf '  %sSkipped WP core (%s) - %s%srun: wp core verify-checksums%s\n' \
     "$DIM" "${CORE_DIRS[*]}" "$RST" "$YEL" "$RST"
-  printf '  %sChecked %d files (%d contain code patterns) in %ds · "new" = modified in the last %d days%s\n' \
-    "$DIM" "$TOTAL_FILES" "${#CANDIDATES[@]}" "$SECONDS" "$RECENT_DAYS" "$RST"
+  printf '  %s%d of the checked files contain code patterns · "new" = modified in the last %d days%s\n' \
+    "$DIM" "${#CANDIDATES[@]}" "$RECENT_DAYS" "$RST"
   printf '\n  %sFindings are indicators for review, not confirmed infections. Verify before reporting to the client.%s\n' \
     "$YEL" "$RST"
 
