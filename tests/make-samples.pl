@@ -119,6 +119,10 @@ w('malicious/php/tech-etc-passwd.php', $P . '$u = @file_get_contents(\'/etc/pass
 w('malicious/php/tech-user-ini.php', $P . '@file_put_contents(".user.ini", "open_basedir = /\n");' . "\n");
 w('malicious/php/tech-imap.php', $P . 'imap_open("{x.example.com:143/imap}INBOX -oProxyCommand=x", "", "");' . "\n");
 w('malicious/php/split-name.php', $P . '$c = \'F\'.\'F\'.\'I\'; if (class_exists($c)) { echo 1; }' . "\n");
+w('malicious/php/chr-list-technique.php', $P . '$e = implode(array_map(\'chr\', [76,68,95,80,82,69,76,79,65,68]));' . "\n");
+w('malicious/php/chr-chain-function.php', $P . '$f = chr(115).chr(121).chr(115).chr(116).chr(101).chr(109);' . "\n");
+w('malicious/php/chr-list-long.php', $P . '$u = implode(array_map("chr", [' . codes('https://chr.example.com/a.php') . ']));' . "\n");
+w('malicious/php/chr-list-short.php', $P . '$k = implode(array_map("chr", [104,101,108,108,111]));' . "\n");
 # ROOT_PHP_UNKNOWN: two tiny WP roots (wp-settings.php + wp-includes/)
 for my $r ('wproot', 'wproot2') {
   w("$r/wp-settings.php", $P); w("$r/wp-includes/version.php", $P);
@@ -170,6 +174,8 @@ w('legit/img/png-named-jpg.jpg', $png);
 w('legit/img/short-tag-bytes.jpg', $jpg . "\x10<?=\x7f" . $jpg);
 w('legit/img/svg-named-png.png', '<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display:block" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h8v8z" fill="#123"/></svg>' . "\n");
 w('legit/img/svg-embedded-png.png', $svg . '<image xlink:href="data:image/png;base64,iVBORw0KGgo=" width="8" height="8"/></svg>' . "\n");
+w('legit/php/chr-binary-bytes.php', $P . '$t = chr(5) . chr(0) . chr(1) . chr(0) . chr(1) . chr(0);' . "\n");
+w('legit/php/chr-range.php', $P . '$b = array_map(\'chr\', range(0x80, 0xFF)); $r = implode(\'\', array_map(\'chr\', $bytes));' . "\n");
 w('legit/php/ini-get-limits.php', $P . '$d = ini_get(\'disable_functions\'); $o = ini_get(\'open_basedir\');' . "\n" .
   'echo "open_basedir = /home/user:/tmp is set";' . "\n");
 w('legit/php/etc-passwd-blocklist.php', $P . '$block = array(\'/etc/passwd\', \'../\', \'php://\');' . "\n");

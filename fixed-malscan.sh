@@ -124,6 +124,7 @@ register_checks() {
   # match). Each one was checked against 69 plugins + 22 themes: 0 legit hits.
   # ini settings: only the bypass VALUE (/ or emptied + newline, as written
   # into .user.ini/php.ini), not messages like 'open_basedir = "%s"' (W3TC).
+  # PHP_CHR_LIST also tests decoded chr() strings against this list.
   register_patterns WEBSHELL_TECHNIQUES high \
     "Webshell techniques: disable_functions/open_basedir bypass, reading system files" '*.php' \
     'LD_PRELOAD'     'LD_PRELOAD' \
@@ -150,6 +151,14 @@ register_checks() {
     "' . '" "'[A-Za-z_]'( \. '[A-Za-z_]'){2,}" \
     '"."'   '"[A-Za-z_]"(\."[A-Za-z_]"){2,}' \
     '" . "' '"[A-Za-z_]"( \. "[A-Za-z_]"){2,}'
+
+  # PHP char-code lists: array_map('chr', [76,68,...]) / chr(115).chr(121)...
+  # rate_PHP_CHR_LIST decodes them: binary bytes (fonts, barcodes, magic
+  # numbers) are skipped, text that hits WEBSHELL_TECHNIQUES or names a
+  # dangerous function -> HIGH.
+  register_check PHP_CHR_LIST medium charcodes $'chr(\nchr (\n\'chr\'\n"chr"' \
+    "Text hidden as PHP character codes: array_map('chr', [..]) or chr(n).chr(n).." \
+    'array_map\s*\(\s*('\''chr'\''|"chr")\s*,\s*(\[|array\s*\()\s*(0x[0-9a-fA-F]{1,2}|[0-9]{1,3})(\s*,\s*(0x[0-9a-fA-F]{1,2}|[0-9]{1,3})){3,}|(chr ?\(\s*(0x[0-9a-fA-F]{1,2}|[0-9]{1,3})\s*\)\s*\.\s*){3,}chr ?\(\s*(0x[0-9a-fA-F]{1,2}|[0-9]{1,3})\s*\)' '*.php'
 
 
   # ---- medium: suspicious, occasionally legitimate -------------------------
@@ -448,6 +457,23 @@ rate_PHP_CHAR_ASSEMBLY() {
     print "skip\tconsecutive array elements copied in order ($i[0]..$i[-1]), not char-picking\n" if $seq;'
 }
 
+# Decode the list. Binary bytes (any outside printable ASCII/tab/newline) =
+# font tables, barcodes, file magic: skip. Text that WEBSHELL_TECHNIQUES
+# matches, or that names a code-running function, or 20+ chars -> HIGH.
+rate_PHP_CHR_LIST() {
+  TECH_RE=${CHECK_RE[WEBSHELL_TECHNIQUES]} perl -ne '
+    chomp; my (undef, $m) = split /\x1f/, $_, 3;
+    my @n = $m =~ /(?:^|[\[(,.]|chr\s*\()\s*(0x[0-9a-fA-F]{1,2}|[0-9]{1,3})(?=\s*[,\])]|$)/g;
+    my $d = join "", map { chr(/^0x/i ? hex : $_) } @n;
+    if ($d =~ /[^\x09\x0a\x0d\x20-\x7e]/) { print "skip\tbinary bytes (font/barcode/file magic), not text\n"; exit }
+    (my $show = $d) =~ s/\s+/ /g; $show = substr($show, 0, 40);
+    if ((length $ENV{TECH_RE} && $d =~ /$ENV{TECH_RE}/)
+        || $d =~ /^(eval|assert|system|exec|passthru|shell_exec|popen|proc_open|pcntl_exec|create_function|call_user_func(_array)?|base64_decode|gzinflate|str_rot13|file_put_contents|fwrite|move_uploaded_file|putenv|mail|FFI|ini_set|ini_restore|dl)$/i) {
+      print "high\tdecodes to \"$show\"\n" }
+    elsif (length $d >= 20) { print "high\tdecodes to \"$show\" (20+ chars of hidden text)\n" }
+    else { print "medium\tdecodes to \"$show\"\n" }'
+}
+
 # -----------------------------------------------------------------------------
 #  DECODERS — read a code window on stdin, print one decoded string per line
 # -----------------------------------------------------------------------------
@@ -495,6 +521,16 @@ decode_charcodes() {
   perl -ne '
     while (/fromCharCode\(\s*((?:\d{2,3}\s*,\s*){3,}\d{2,3})\s*\)?/g) {
       my $d = join "", map { chr } split /\s*,\s*/, $1;
+      $d =~ s/[\x00-\x1f\x7f-\xff]+/ /g; print substr($d, 0, 300), "\n";
+    }
+    # PHP: array_map("chr", [n, ...]) and chr(n).chr(n)...
+    my $num = qr/0x[0-9a-fA-F]{1,2}|[0-9]{1,3}/;
+    my @lists;
+    push @lists, $1 while /array_map\s*\(\s*[\x27"]chr[\x27"]\s*,\s*(?:\[|array\s*\()\s*((?:(?:$num)\s*,\s*){3,}(?:$num))/g;
+    push @lists, $1 while /((?:chr\s*\(\s*(?:$num)\s*\)\s*\.\s*){3,}chr\s*\(\s*(?:$num)\s*\))/g;
+    for my $l (@lists) {
+      $l =~ s/chr\s*\(//g;
+      my $d = join "", map { chr(/^0x/i ? hex : $_) } $l =~ /($num)/g;
       $d =~ s/[\x00-\x1f\x7f-\xff]+/ /g; print substr($d, 0, 300), "\n";
     }'
 }
