@@ -515,10 +515,12 @@ rate_PHP_CHAR_ASSEMBLY() {
 }
 
 # CLOAKING found a read of the referrer / user agent. Who is targeted = the
-# engine/bot/mobile/social words near it (that line + 3 lines; minified: 400
-# chars). No words -> ok. Then look for an action after it: 12 lines, or 40
+# engine/bot/mobile/social words near it (PHP: that line + 3 lines; JS: in
+# the condition the read sits in, see js_ctl). No words -> ok. Then look for an action after it: 12 lines, or 40
 # for referrer + search engine (strongest sign; then any remote fetch counts,
-# e.g. curl to a URL built from variables). Minified JS: next 600 chars.
+# e.g. curl to a URL built from variables). JS: only the code the condition
+# controls ({ block } / one statement), so library feature detection (CKEditor
+# env, Google Analytics hashing) with a script loader nearby stays clean.
 #   referrer / search engine / bot / social app + any action   -> HIGH
 #   mobile only + action to a hard-coded URL                    -> HIGH
 #   mobile only + action without a URL (menus, iOS tap fixes)   -> ok
@@ -526,27 +528,70 @@ rate_PHP_CHAR_ASSEMBLY() {
 #   no action                                                   -> ok
 rate_CLOAKING() {
   perl -ne '
-    BEGIN { our ($cf, @L) = ("") }
+    BEGIN { our ($cf, @L) = ("");
+      # JS structure helpers: index of the bracket closing the one at $i
+      sub bal { my ($s, $i, $o, $c) = @_; my $d = 0;
+        for my $k ($i .. length($s) - 1) { my $ch = substr($s, $k, 1);
+          if ($ch eq $o) { $d++ } elsif ($ch eq $c) { return $k if !--$d } }
+        return length($s) - 1 }
+      # what a condition ending at $e controls: { block } or one statement
+      sub ctl_body { my ($t, $e) = @_; substr($t, $e) =~ /^\s*/; my $o = $e + $+[0];
+        if (substr($t, $o, 1) eq "{") { my $k = bal($t, $o, "{", "}"); return substr($t, $o, $k - $o + 1) }
+        (my $x = substr($t, $o, 400)) =~ s/;.*//s; return $x }
+      # the condition a JS read of the referrer/user agent sits in, and the
+      # code it controls: if (..read..) {..} | ..read..) && action |
+      # v = ..read..; if (..v..) {..}. Returns (condition, body, start).
+      sub js_ctl { my ($t, $pos) = @_;
+        my $from = $pos > 300 ? $pos - 300 : 0; my $bef = substr($t, $from, $pos - $from); my $ip;
+        while ($bef =~ /\bif\s*\(/g) { $ip = $from + $+[0] - 1 }
+        if (defined $ip) { my $k = bal($t, $ip, "(", ")");
+          return (substr($t, $ip, $k - $ip + 1), ctl_body($t, $k + 1), $ip) if $k > $pos }
+        if (substr($t, $pos, 200) =~ /^[^;{}]*?\)\s*(&&|\?)/) {
+          my $e = $pos + $+[0]; my $cs = $pos > 150 ? $pos - 150 : 0;
+          (my $x = substr($t, $e, 400)) =~ s/;.*//s; return (substr($t, $cs, $e - $cs), $x, $cs) }
+        if ($bef =~ /([A-Za-z_\$][\w\$]*)\s*=\s*(?:[\w\$]+\.)?$/) { my $v = $1;
+          my $rest = substr($t, $pos, 600);
+          while ($rest =~ /\bif\s*\(/g) { my $i = $pos + $+[0] - 1; my $k = bal($t, $i, "(", ")");
+            my $c = substr($t, $i, $k - $i + 1);
+            return ($c, ctl_body($t, $k + 1), $i) if $c =~ /(?<![\w\$.])\Q$v\E(?![\w\$])/ } }
+        return }
+    }
     chomp; my $n = $.;             # $. is reset when the source file is read
     my ($p, $m, $q, $f, $l) = split /\x1f/;
     if ($f ne $cf) { $cf = $f; @L = (); if (open(my $h, "<", $f)) { @L = <$h>; close $h } }
     my $line = $L[$l - 1] // ""; chomp $line;
     my $at = index($line, $m); $at = 0 if $at < 0;
     my $min = length($line) > 2000;
-    my $near = $min ? substr($line, ($at > 200 ? $at - 200 : 0), 600)
-                    : join(" ", $line, map { $L[$_] // "" } $l .. $l + 2);
+    my $ext = $f =~ /\.js$/i ? "js" : $f =~ /htaccess$/i ? "ht" : "php";
+    my ($near, $jsbody);
+    if ($ext eq "js") {
+      # JS (libraries read the user agent for feature detection / hashing):
+      # the words must be in the condition (or a list defined just above
+      # it) and the action inside the code that condition controls
+      my ($t, $pos);
+      if ($min) { my $s0 = $at > 600 ? $at - 600 : 0; $t = substr($line, $s0, 2400); $pos = $at - $s0 }
+      else { my $a0 = $l > 4 ? $l - 4 : 0; my $pre = join "", @L[$a0 .. $l - 2];
+             $t = $pre . join "", @L[$l - 1 .. ($l + 11 > $#L ? $#L : $l + 11)]; $pos = length($pre) + $at }
+      my ($c, $b, $cs) = js_ctl($t, $pos);
+      if (!defined $c) { print "$n\tok\treferrer/user agent not used as a condition\n"; next }
+      # above the condition only quoted strings count (a word list like
+      # ["google.","bing."]), never comments ("...Google Maps...")
+      my $above = substr($t, ($cs > 200 ? $cs - 200 : 0), ($cs > 200 ? 200 : $cs));
+      $above =~ s{/\*.*?\*/}{}gs; $above =~ s{(^|[\s;{}])//[^\n]*}{$1}g;
+      $near = join(" ", $above =~ /([\x27"])((?:(?!\1).){1,80})\1/g) . " " . $c; $jsbody = $b;
+    } else { $near = join(" ", $line, map { $L[$_] // "" } $l .. $l + 2) }
     my @w = map { lc } $near =~ /(google|bing|yahoo|yandex|baidu|duckduck|bot|crawl|spider|slurp|android|iphone|ipad|ipod|mobile|facebook|twitter|instagram|tiktok)/gi;
     my %u; @w = grep { !$u{$_}++ } @w;
     if (!@w) { print "$n\tok\treferrer/user agent not tested for bots, engines or mobile\n"; next }
     my $who = $m =~ /REFERER|referrer/ ? "referrer" : "user agent";
     my $strong = $who eq "referrer" && grep { /^(google|bing|yahoo|yandex|baidu|duckduck)$/ } @w;
     my $scope = substr($line, $at);
-    if ($min) { $scope = substr($scope, 0, 600 + length $m) }
+    if (defined $jsbody) { $scope = $jsbody }
+    elsif ($min) { $scope = substr($scope, 0, 600 + length $m) }
     else { my $n = $strong ? 40 : 12;
            for my $k ($l .. $l + $n - 1) { last if $k > $#L || length($scope) > 8000; $scope .= " " . $L[$k] } }
     my $mobile = !grep { !/^(android|iphone|ipad|ipod|mobile)$/ } @w;
     my $notbot = $who eq "user agent" && $p =~ /!\s*(preg_match|strpos|stripos|stristr|strstr)\s*\([^)]*$/i;
-    my $ext = $f =~ /\.js$/i ? "js" : $f =~ /htaccess$/i ? "ht" : "php";
     my ($act, $out) = ("", 0);
     if ($ext eq "ht") {
       $act = "RewriteRule to an external URL" if $scope =~ /RewriteRule\s+\S+\s+https?:\/\//i }
@@ -567,7 +612,7 @@ rate_CLOAKING() {
            : "";
       if (!$act && $scope =~ /\b(echo|print|printf)\b[^;]{0,300}(<script|<iframe|<a\s[^>]{0,80}href)/i) {
         $act = "links/script printed"; $out = 1 } }
-    my ($url) = $scope =~ m{(?:https?:)?//([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,})}i;
+    my ($url) = $scope =~ m{(?:https?:|[\x27"])//([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,})}i;
     my $tgt = "visitors by $who (" . join(",", @w[0 .. ($#w < 3 ? $#w : 3)]) . ")";
     if (!$act)                     { print "$n\tok\tno redirect/injection after the check\n" }
     elsif ($mobile && !$url)       { print "$n\tok\tmobile check, no hard-coded target URL\n" }

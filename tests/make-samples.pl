@@ -235,3 +235,15 @@ w('legit/js/cookie-banner.js', $H . 'if (document.cookie.indexOf("consent=") ===
   '  btn.onclick = function () { document.cookie = "consent=1; path=/"; banner.hide(); };' . "\n}\n");
 w('legit/js/lang-redirect.js', $H . 'if (document.cookie.indexOf("lang=") == -1) { document.cookie = "lang=de; path=/"; window.location.href = "/de/"; }' . "\n");
 w('legit/php/inline-relative-redirect.php', $P . "?>\n" . '<script>window.location.href="/thank-you/";</script>' . "\n");
+w('malicious/js/cloak-ua-var.js', $H . 'var ua = navigator.userAgent.toLowerCase();' . "\n" . 'var x = 1;' . "\n" .
+  'if (/android|iphone/.test(ua)) { window.location = "https://ua-var.example.com/"; }' . "\n");
+w('malicious/js/cloak-and-form.js', $H . '/(google|bing|yahoo)\./i.test(document.referrer)&&(top.location.href="https://andform.example.com/");' . "\n");
+w('malicious/js/cloak-ternary.js', $H . 'var go = /Mobi|Android/i.test(navigator.userAgent) ? window.open("https://tern.example.com/") : 0;' . "\n");
+w('malicious/js/cloak-list-above.js', $H . 'var se = ["google.", "bing.", "yahoo."];' . "\n" .
+  'if (se.some(function (s) { return document.referrer.indexOf(s) > -1; })) { location.replace("https://list.example.com/"); }' . "\n");
+w('legit/js/env-detect.js', $H . 'var env=function(){var a=navigator.userAgent.toLowerCase();return{mobile:-1<a.indexOf("mobile"),iOS:/(ipad|iphone|ipod)/.test(a)}}();' .
+  'function load(u){var s=document.createElement("script");s.src="https://cdn.example.com/plugins/"+u;document.head.appendChild(s)}' . "\n");
+w('legit/js/client-hash.js', $H . 'var id=function(){for(var a=navigator.userAgent+(document.cookie||"")+(document.referrer||""),b=a.length;b>0;)a+=b--;return a}();' .
+  'var g=/google|android/i;var s=document.createElement("script");s.src="https://stats.example.com/a.js";' . "\n");
+w('legit/js/browser-reload.js', $H . '/*' . "\n" . '* In some browsers the reload keeps cached data, causing e.g. Google Maps to load anyway.' . "\n" . '*/' . "\n" .
+  'function reload() {' . "\n" . '  if (navigator.userAgent.toLowerCase().indexOf("firefox") > -1) {' . "\n" . '    window.location.href = url.toString();' . "\n  }\n}\n");
