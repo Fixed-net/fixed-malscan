@@ -12,6 +12,8 @@ domain cloak.example.com malicious/php/cloak-referer-redirect.php
 domain doorway.example.com malicious/php/cloak-bot-remote.php
 domain err.example.com malicious/htaccess-errordoc/.htaccess
 domain fcc.example.com malicious/js/fromcharcode-long.js
+domain fv.example.com malicious/js/first-visit.js
+domain fv2.example.com malicious/js/first-visit-obf.js
 domain inject.example.com malicious/js/cloak-mobile-inject.js
 domain inline.example.com malicious/php/footer-inline-redirect.php
 domain m-cloak.example.com malicious/js/cloak-mobile-redirect.js
@@ -50,6 +52,8 @@ high FAKE_IMAGE wp-content/uploads/2026/10/logo_s.jpg
 high FAKE_IMAGE wp-content/uploads/2026/10/polyglot-gif.gif
 high FAKE_IMAGE wp-content/uploads/2026/10/polyglot.jpg
 high FAKE_IMAGE wp-content/uploads/2026/10/short-tag.png
+high FIRST_VISIT_REDIRECT malicious/js/first-visit-obf.js
+high FIRST_VISIT_REDIRECT malicious/js/first-visit.js
 high FROMCHARCODE_LONG malicious/js/fromcharcode-long.js
 high HEX_HTTP malicious/js/hex-http.js
 high JS_EVAL_DECODE malicious/js/eval-atob.js
@@ -102,11 +106,13 @@ low EXPOSED_PHP backups/empty.php.bak
 low FAKE_IMAGE wp-content/uploads/2026/10/empty.png
 low JS_PACKER malicious/js/packer.js
 med BASE64_LITERAL malicious/js/eval-atob.js
+med BASE64_LITERAL malicious/js/first-visit-obf.js
 med BASE64_LITERAL malicious/php/b64-function-name.php
 med BASE64_LITERAL malicious/php/b64-gif-with-php.php
 med BASE64_LITERAL malicious/php/eval-chain.php
 med BASE64_URL malicious/js/b64url-http.js
 med BASE64_URL malicious/js/b64url-urlsafe.js
+med BASE64_URL malicious/js/first-visit-obf.js
 med BASE64_URL malicious/php/b64url-variable.php
 med EXPOSED_WPCONFIG backups/wp-config-old.txt
 med FAKE_IMAGE wp-content/uploads/2026/10/banner_s.jpg

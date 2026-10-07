@@ -157,6 +157,16 @@ register_checks() {
     '<script[^>]*>[^<]{0,300}(location(\.href)?[ \t]*=[ \t]*|location\.(replace|assign)[ \t]*\([ \t]*)['\''"](https?:)?//[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}|http-equiv=['\''"]?[Rr]efresh['\''"]?[^>]*[Uu][Rr][Ll]=['\''"]?https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}' \
     '*.php' '*.html' '*.htm'
 
+  # "First visit only" redirect: test a cookie, set it, send the visitor away
+  # -> a returning visitor (the site owner) never sees it again. The regex
+  # finds the cookie test; rate_FIRST_VISIT_REDIRECT needs a cookie SET and a
+  # redirect to an external URL or a decoded one (atob/fromCharCode/unescape)
+  # after it. Cookie banners, language switches (relative URLs) stay quiet.
+  register_check FIRST_VISIT_REDIRECT high none 'document.cookie' \
+    "Redirect on a visitor's first visit only (cookie test + set + redirect)" \
+    'document\.cookie(\.(indexOf|match|search)|[ \t]*[!=]=)' \
+    '*.js' '*.php' '*.html' '*.htm'
+
   # ---- signature lists: just add words (matched as whole words) ----------
   register_signatures WEBSHELL_MARKERS high \
     "Known webshell signatures (WSO/FilesMan, b374k, c99, r57, IndoXploit, Alfa)" '*.php' \
@@ -595,6 +605,29 @@ rate_INLINE_REDIRECT() {
     chomp; my (undef, $m) = split /\x1f/;
     my ($host) = $m =~ m{(?:https?:)?//([A-Za-z0-9.-]+)};
     print "$.\tmedium\tall visitors redirected -> ", lc $host, "\n";'
+}
+
+# FIRST_VISIT_REDIRECT found a cookie test; read on (rest of the line + 12
+# lines, or 600 chars in minified JS) for a cookie SET and a redirect whose
+# target is an external URL literal or decoded at runtime.
+rate_FIRST_VISIT_REDIRECT() {
+  perl -ne '
+    BEGIN { our ($cf, @L) = ("") }
+    chomp; my $n = $.;
+    my ($p, $m, $q, $f, $l) = split /\x1f/;
+    if ($f ne $cf) { $cf = $f; @L = (); if (open(my $h, "<", $f)) { @L = <$h>; close $h } }
+    my $line = $L[$l - 1] // ""; chomp $line;
+    my $at = index($line, $m); $at = 0 if $at < 0;
+    my $scope = substr($line, $at);
+    if (length($line) > 2000) { $scope = substr($scope, 0, 600 + length $m) }
+    else { for my $k ($l .. $l + 11) { last if $k > $#L || length($scope) > 4000; $scope .= " " . $L[$k] } }
+    my $set = $scope =~ /document\.cookie\s*=(?!=)/;
+    my $go  = qr/(?:location(?:\.href)?\s*=(?!=)\s*|location\.(?:replace|assign)\s*\(\s*|window\.open\s*\(\s*)/;
+    my ($host) = $scope =~ /$go[\x27"](?:https?:)?\/\/([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/;
+    my $dec = $scope =~ /$go(?:window\.)?(?:atob|unescape|decodeURIComponent|String\.fromCharCode)\s*\(/;
+    if ($set && $host)   { print "$n\thigh\tcookie set, first-time visitors redirected -> ", lc $host, "\n" }
+    elsif ($set && $dec) { print "$n\thigh\tcookie set, first-time visitors redirected to a decoded URL\n" }
+    else                 { print "$n\tok\tno cookie set + external redirect after the test\n" }'
 }
 
 # Decode the list. Binary bytes (any outside printable ASCII/tab/newline) =

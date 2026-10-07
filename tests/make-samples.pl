@@ -168,6 +168,9 @@ w('malicious/htaccess-anyref/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_R
 w('malicious/htaccess-hostcond/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_HOST} ^victim\\.example\\.org\$ [NC]\nRewriteRule ^(.*)\$ https://scam2.example.com/\$1 [R=302,L]\n");
 w('malicious/php/footer-inline-redirect.php', $P . "?>\n<footer>(c) site</footer>\n" . '<script type="text/javascript">window.location.href="https://inline.example.com/";</script>' . "\n");
 w('malicious/html/index.html', "<html><head>\n" . '<meta http-equiv="refresh" content="0;url=https://meta.example.com/">' . "\n</head></html>\n");
+w('malicious/js/first-visit.js', $H . 'if (document.cookie.indexOf("_vst") == -1) {' . "\n" .
+  '  document.cookie = "_vst=1; path=/; max-age=86400";' . "\n" . '  window.location.href = "https://fv.example.com/";' . "\n}\n");
+w('malicious/js/first-visit-obf.js', $H . 'if(document.cookie.search("_x=")<0){document.cookie="_x=1";location.replace(atob("' . encode_base64('https://fv2.example.com/', '') . '"))}' . "\n");
 
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
@@ -228,4 +231,7 @@ w('legit/htaccess-cache/.htaccess', "RewriteCond %{HTTP_USER_AGENT} !^.*(android
 w('legit/htaccess-https/.htaccess', "RewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^(.*)\$ https://mysite.example.com/\$1 [R=301,L]\n");
 w('legit/htaccess-www/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_HOST} ^www\\.mysite\\.example\\.com [NC]\nRewriteRule ^(.*)\$ https://mysite.example.com/\$1 [R=301,L]\n");
 w('legit/htaccess-selfhost/.htaccess', "RewriteEngine On\nRewriteCond %{HTTPS} !=on\nRewriteRule ^(.*) https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]\n");
+w('legit/js/cookie-banner.js', $H . 'if (document.cookie.indexOf("consent=") === -1) {' . "\n" . '  banner.show();' . "\n" .
+  '  btn.onclick = function () { document.cookie = "consent=1; path=/"; banner.hide(); };' . "\n}\n");
+w('legit/js/lang-redirect.js', $H . 'if (document.cookie.indexOf("lang=") == -1) { document.cookie = "lang=de; path=/"; window.location.href = "/de/"; }' . "\n");
 w('legit/php/inline-relative-redirect.php', $P . "?>\n" . '<script>window.location.href="/thank-you/";</script>' . "\n");
