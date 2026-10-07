@@ -166,6 +166,8 @@ w('malicious/htaccess-after-canonical/.htaccess', "RewriteEngine On\nRewriteCond
 w('malicious/htaccess-errordoc/.htaccess', "ErrorDocument 404 https://err.example.com/\n");
 w('malicious/htaccess-anyref/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_REFERER} .\nRewriteRule ^(.*)\$ http://anyref.example.com/ [R=302,L]\n");
 w('malicious/htaccess-hostcond/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_HOST} ^victim\\.example\\.org\$ [NC]\nRewriteRule ^(.*)\$ https://scam2.example.com/\$1 [R=302,L]\n");
+w('malicious/php/footer-inline-redirect.php', $P . "?>\n<footer>(c) site</footer>\n" . '<script type="text/javascript">window.location.href="https://inline.example.com/";</script>' . "\n");
+w('malicious/html/index.html', "<html><head>\n" . '<meta http-equiv="refresh" content="0;url=https://meta.example.com/">' . "\n</head></html>\n");
 
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
@@ -226,3 +228,4 @@ w('legit/htaccess-cache/.htaccess', "RewriteCond %{HTTP_USER_AGENT} !^.*(android
 w('legit/htaccess-https/.htaccess', "RewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^(.*)\$ https://mysite.example.com/\$1 [R=301,L]\n");
 w('legit/htaccess-www/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_HOST} ^www\\.mysite\\.example\\.com [NC]\nRewriteRule ^(.*)\$ https://mysite.example.com/\$1 [R=301,L]\n");
 w('legit/htaccess-selfhost/.htaccess', "RewriteEngine On\nRewriteCond %{HTTPS} !=on\nRewriteRule ^(.*) https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]\n");
+w('legit/php/inline-relative-redirect.php', $P . "?>\n" . '<script>window.location.href="/thank-you/";</script>' . "\n");

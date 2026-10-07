@@ -13,8 +13,10 @@ domain doorway.example.com malicious/php/cloak-bot-remote.php
 domain err.example.com malicious/htaccess-errordoc/.htaccess
 domain fcc.example.com malicious/js/fromcharcode-long.js
 domain inject.example.com malicious/js/cloak-mobile-inject.js
+domain inline.example.com malicious/php/footer-inline-redirect.php
 domain m-cloak.example.com malicious/js/cloak-mobile-redirect.js
 domain m-ht.example.com malicious/htaccess-mobile/.htaccess
+domain meta.example.com malicious/html/index.html
 domain min-cloak.example.com malicious/js/cloak-minified.js
 domain mixed.example.com wp-content/plugins/cache-plugin/injected-cloak.php
 domain pct.example.com malicious/js/unescape-blob.js
@@ -122,6 +124,8 @@ med HTACCESS_REDIRECT malicious/htaccess-hostcond/.htaccess
 med HTACCESS_REDIRECT malicious/htaccess-mobile/.htaccess
 med HTACCESS_REDIRECT malicious/htaccess-plain/.htaccess
 med HTACCESS_REDIRECT malicious/htaccess/.htaccess
+med INLINE_REDIRECT malicious/html/index.html
+med INLINE_REDIRECT malicious/php/footer-inline-redirect.php
 med JS_OBFUSCATOR malicious/js/obfuscator.js
 med PHP_CHR_LIST malicious/php/chr-list-short.php
 med PHP_SPLIT_STRING malicious/php/split-name.php

@@ -150,6 +150,13 @@ register_checks() {
     'RewriteRule[ \t]+[^ \t]+[ \t]+https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}([/ \t?]|$)|(^|[ \t])Redirect(Match|Permanent|Temp)?[ \t]+([^ \t]+[ \t]+){1,2}https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}|ErrorDocument[ \t]+[0-9]{3}[ \t]+https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}' \
     '.htaccess'
 
+  # Inline <script> or meta refresh in a template that sends every visitor
+  # to another domain (typical footer.php / header.php / index.html injection).
+  register_check INLINE_REDIRECT medium none $'location\nefresh' \
+    "Inline <script>/meta refresh in a template redirects every visitor to another domain" \
+    '<script[^>]*>[^<]{0,300}(location(\.href)?[ \t]*=[ \t]*|location\.(replace|assign)[ \t]*\([ \t]*)['\''"](https?:)?//[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}|http-equiv=['\''"]?[Rr]efresh['\''"]?[^>]*[Uu][Rr][Ll]=['\''"]?https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}' \
+    '*.php' '*.html' '*.htm'
+
   # ---- signature lists: just add words (matched as whole words) ----------
   register_signatures WEBSHELL_MARKERS high \
     "Known webshell signatures (WSO/FilesMan, b374k, c99, r57, IndoXploit, Alfa)" '*.php' \
@@ -581,6 +588,13 @@ rate_HTACCESS_REDIRECT() {
         || ($cond =~ /RewriteCond\s+%\{HTTP_HOST\}\s+(\S+)/i && $1 =~ /$re/i)) {
       print "$n\tok\tcanonical https/www rule for the site itself\n"; next }
     print "$n\tmedium\tall visitors redirected -> $host\n";'
+}
+
+rate_INLINE_REDIRECT() {
+  perl -ne '
+    chomp; my (undef, $m) = split /\x1f/;
+    my ($host) = $m =~ m{(?:https?:)?//([A-Za-z0-9.-]+)};
+    print "$.\tmedium\tall visitors redirected -> ", lc $host, "\n";'
 }
 
 # Decode the list. Binary bytes (any outside printable ASCII/tab/newline) =
