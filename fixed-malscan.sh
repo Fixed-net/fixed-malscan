@@ -118,6 +118,29 @@ register_checks() {
     "Known webshell signatures (WSO/FilesMan, b374k, c99, r57, IndoXploit, Alfa)" '*.php' \
     FilesMan b374k c99shell r57shell IndoXploit WSOsetcookie wso_version 0byt3m1n1 AlfaTeam
 
+  # Techniques, not names: what a shell does to escape disable_functions /
+  # open_basedir or to read the server, never needed by a WordPress plugin.
+  # Pairs of  PREFILTER-LITERAL  REGEX  (the literal must be part of every
+  # match). Each one was checked against 69 plugins + 22 themes: 0 legit hits.
+  # ini settings: only the bypass VALUE (/ or emptied + newline, as written
+  # into .user.ini/php.ini), not messages like 'open_basedir = "%s"' (W3TC).
+  register_patterns WEBSHELL_TECHNIQUES high \
+    "Webshell techniques: disable_functions/open_basedir bypass, reading system files" '*.php' \
+    'LD_PRELOAD'     'LD_PRELOAD' \
+    '__attribute__'  '__attribute__\s*\(\(\s*constructor' \
+    'gcc'            'gcc\s+(-[A-Za-z0-9_=]+\s+)*-shared' \
+    'nostartfiles'   '-nostartfiles' \
+    'FFI::'          '(^|[^A-Za-z0-9_])FFI::(cdef|load|scope)\s*\(' \
+    'pcntl_exec'     '(^|[^A-Za-z0-9_$>:])pcntl_exec([^A-Za-z0-9_]|$)' \
+    'oProxyCommand'  '-oProxyCommand' \
+    '/etc/'          '(file_get_contents|file|fopen|readfile|show_source|highlight_file|copy|symlink)\s*\(\s*@?['\''"]/etc/(passwd|shadow)['\''"]' \
+    '/etc/shadow'    '/etc/shadow' \
+    'open_basedir'   'open_basedir\s*=\s*(/\s*)?\\n|open_basedir\s*=\s*/\s*['\''"]' \
+    'open_basedir'   'php_value\s+open_basedir\s+(/|none)\s*(\\n|['\''"])' \
+    'disable_functions' 'disable_functions\s*=\s*(none\s*)?\\n|disable_functions\s*=\s*none\s*['\''"]' \
+    'Chankro'        '(^|[^A-Za-z0-9_])Chankro([^A-Za-z0-9_]|$)' \
+    'bypass_disablefunc' 'bypass_disablefunc'
+
 
   # ---- medium: suspicious, occasionally legitimate -------------------------
   register_check BASE64_LITERAL medium base64 $'atob\nbase64_decode' \
@@ -617,6 +640,18 @@ register_signatures() {
   local -a g; set -f; g=($globs); set +f
   register_check "$id" "$sev" none "$words" "$desc" \
     "(^|[^A-Za-z0-9])($(literals_to_regex "$words"))([^A-Za-z0-9]|\$)" "${g[@]}"
+}
+
+# register_patterns ID SEVERITY "Description" 'GLOBS' LITERAL REGEX [LITERAL REGEX...]
+# A list of independent regexes, each with the prefilter literal it contains.
+register_patterns() {
+  local id=$1 sev=$2 desc=$3 globs=$4 lits="" re=""; shift 4
+  (( $# % 2 == 0 )) || die "register_patterns $id: odd number of LITERAL REGEX args"
+  while (( $# )); do
+    lits+="$1"$'\n'; re+="${re:+|}($2)"; shift 2
+  done
+  local -a g; set -f; g=($globs); set +f
+  register_check "$id" "$sev" none "$lits" "$desc" "$re" "${g[@]}"
 }
 
 register_check() {

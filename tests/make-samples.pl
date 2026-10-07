@@ -109,6 +109,15 @@ w('wp-content/uploads/2026/10/appended-big.jpg', $jpg . ("\x00" x 400000) . '<?p
 # PHP in EXIF/comment block right after the JPEG header
 w('wp-content/uploads/2026/10/exif-php.jpg', "\xff\xd8\xff\xfe\x00\x1c<?php system(\$_GET[1]); ?>" . ("\x00" x 400000) . "\xff\xd9");
 
+# WEBSHELL_TECHNIQUES / PHP_SPLIT_STRING / PHP_CHR_LIST (index2.php family)
+w('malicious/php/tech-ld-preload.php', $P . 'putenv("LD_PRELOAD=/tmp/x.so"); mail("a@example.com", "", "");' . "\n");
+w('malicious/php/tech-so-source.php', $P . '$c = "void __attribute__((constructor)) i(){}";' . "\n" .
+  '$cmd = "gcc -fPIC -shared -o /tmp/x.so /tmp/x.c";' . "\n");
+w('malicious/php/tech-ffi.php', $P . '$f = FFI::cdef("int system(const char *c);"); $f->system("id");' . "\n");
+w('malicious/php/tech-pcntl.php', $P . 'pcntl_exec("/bin/sh", array("-c", "id"));' . "\n");
+w('malicious/php/tech-etc-passwd.php', $P . '$u = @file_get_contents(\'/etc/passwd\');' . "\n");
+w('malicious/php/tech-user-ini.php', $P . '@file_put_contents(".user.ini", "open_basedir = /\n");' . "\n");
+w('malicious/php/tech-imap.php', $P . 'imap_open("{x.example.com:143/imap}INBOX -oProxyCommand=x", "", "");' . "\n");
 # ROOT_PHP_UNKNOWN: two tiny WP roots (wp-settings.php + wp-includes/)
 for my $r ('wproot', 'wproot2') {
   w("$r/wp-settings.php", $P); w("$r/wp-includes/version.php", $P);
@@ -160,5 +169,11 @@ w('legit/img/png-named-jpg.jpg', $png);
 w('legit/img/short-tag-bytes.jpg', $jpg . "\x10<?=\x7f" . $jpg);
 w('legit/img/svg-named-png.png', '<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display:block" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h8v8z" fill="#123"/></svg>' . "\n");
 w('legit/img/svg-embedded-png.png', $svg . '<image xlink:href="data:image/png;base64,iVBORw0KGgo=" width="8" height="8"/></svg>' . "\n");
+w('legit/php/ini-get-limits.php', $P . '$d = ini_get(\'disable_functions\'); $o = ini_get(\'open_basedir\');' . "\n" .
+  'echo "open_basedir = /home/user:/tmp is set";' . "\n");
+w('legit/php/etc-passwd-blocklist.php', $P . '$block = array(\'/etc/passwd\', \'../\', \'php://\');' . "\n");
+w('legit/php/ld-library-path.php', $P . 'putenv("LD_LIBRARY_PATH=/usr/lib"); putenv("TMPDIR=/tmp");' . "\n");
 w('wproot/wp-content/object-cache.php', $P . '// drop-in' . "\n");
 w('wproot/wp-config.php', $P . '// config' . "\n");
+w('legit/php/ini-message.php', $P . '$e = __(\'%1$sopen_basedir%3$s restriction in effect:%4$sopen_basedir = "%5$s"%3$s\'); $f = "disable_functions = \"$df\"";' . "\n");
+w('malicious/php/tech-php-ini-empty.php', $P . 'file_put_contents("php.ini", "disable_functions =\nsafe_mode = Off\n");' . "\n");

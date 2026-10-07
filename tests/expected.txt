@@ -34,6 +34,14 @@ high SHIFTED_URL wp-content/plugins/superb-blocks/assets/js/dynamic-blocks/revea
 high SHIFTED_URL wp-content/plugins/superb-blocks/assets/js/injected.js
 high UPLOADS_PHP wp-content/uploads/2026/10/cache.php
 high WEBSHELL_MARKERS malicious/php/webshell-marker.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-etc-passwd.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-ffi.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-imap.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-ld-preload.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-pcntl.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-php-ini-empty.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-so-source.php
+high WEBSHELL_TECHNIQUES malicious/php/tech-user-ini.php
 ignored BASE64_LITERAL legit/php/api-client-id.php
 ignored BASE64_LITERAL legit/php/tracking-pixel.php
 ignored CHARCODE_ARITH legit/js/char-maths.js
