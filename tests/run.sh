@@ -57,5 +57,20 @@ if grep -q 'DIFF' "$tmp/verify"; then
   grep -A3 'DIFF' "$tmp/verify"
 fi
 
+# tests/real: real-world samples, local only (git-excluded, never in CI). No
+# expected.txt for them: every file must be reported (HIGH/MED/LOW) at least once.
+real="$here/real"; nreal=0
+if [[ -d $real ]] && [[ -n $(ls -A -- "$real") ]]; then
+  (cd -- "$real" && bash "$scanner" -k --no-color -v . > "$tmp/real" 2>&1) || true
+  awk '/SUMMARY/ { exit }
+       /^\[(HIGH|MED|LOW)\]/ { p = $2; sub(/:[0-9]+$/, "", p); sub(/^\.\//, "", p); print p }' \
+    "$tmp/real" | sort -u > "$tmp/real-got"
+  (cd -- "$real" && find . -type f | sed 's#^\./##' | sort) > "$tmp/real-all"
+  nreal=$(wc -l < "$tmp/real-all")
+  if missed=$(comm -23 "$tmp/real-all" "$tmp/real-got") && [[ -n $missed ]]; then
+    fail=1; echo "FAIL: tests/real files not reported:"; sed 's/^/  /' <<< "$missed"
+  fi
+fi
+
 (( fail )) && exit 1
-echo "OK: $(wc -l < "$tmp/got") expected results, --verify clean"
+echo "OK: $(wc -l < "$tmp/got") expected results, --verify clean$( (( nreal )) && echo ", $nreal real samples caught")"

@@ -151,6 +151,14 @@ register_checks() {
     "javascript-obfuscator style identifiers (_0x1a2b3c)" \
     '_0x[0-9a-f]{4,6}[^_0-9a-z]{1,4}_0x[0-9a-f]{4,6}[^_0-9a-z]{1,4}_0x[0-9a-f]{4,6}'
 
+  # ---- disguised files ----------------------------------------------------
+  # Image extension but no image data (PHP/HTML saved as .jpg, included or
+  # served from elsewhere), or a real image with PHP code inside. Every image
+  # is read by classify_FAKE_IMAGE; real, clean images are not listed.
+  register_file_check FAKE_IMAGE high \
+    "Image files that are really PHP/HTML, or images with PHP code inside" \
+    '*.jpg|*.jpeg|*.png|*.gif|*.ico|*.webp|*.bmp'
+
   # ---- exposed files (listed after malicious-code findings) ---------------
   register_file_check EXPOSED_WPCONFIG high \
     "wp-config copies not ending in .php (DB credentials)" \
@@ -194,8 +202,9 @@ register_allowlist() {
 #  FILE CLASSIFIERS — classify_<ID>: newline file list on stdin,
 #  print "sev<TAB>note<TAB>file" per file.
 # -----------------------------------------------------------------------------
-# Severities: high | medium | low, or "skip" = not a real finding (counted
-# with the allowlisted files, reason shown with -v).
+# Severities: high | medium | low, "skip" = not a real finding (counted
+# with the allowlisted files, reason shown with -v), or "ok" = clean, not
+# listed or counted at all (for checks that look at every file of a type).
 classify_EXPOSED_PHP() {
   perl -ne '
     chomp; my $f = $_; next unless length $f;
@@ -218,6 +227,46 @@ classify_EXPOSED_PHP() {
     if ($html || $bin || $url) {
       print "skip\tsaved page/image (no PHP code), not a renamed PHP file\t$f\n" }
     else { print "low\tno PHP code\t$f\n" }'
+}
+
+# Magic bytes decide what a file is, not its extension (a PNG named .jpg is
+# common and fine). '<?=' is only trusted in text: 3 bytes turn up by chance
+# in binary image data. Real images are only checked for '<?php'.
+# Speed: sites hold 10k-200k images, so only the first 256 KB and the last
+# 64 KB of a file are read (fake images start with the code; polyglots carry
+# it in EXIF/comment blocks near the start or appended at the end). Known
+# limit: PHP placed in the middle of a large image's pixel data is missed.
+classify_FAKE_IMAGE() {
+  HEADB=262144 TAILB=65536 perl -ne '
+    chomp; my $f = $_; next unless length $f;
+    my $sz = -s $f;
+    if (!$sz) { print "low\tempty image file\t$f\n"; next }
+    my ($c, $t) = ("", "");
+    if (open(my $h, "<:raw", $f)) {
+      read($h, $c, $ENV{HEADB});
+      if ($sz > $ENV{HEADB} + $ENV{TAILB}) { seek($h, -$ENV{TAILB}, 2); read($h, $t, $ENV{TAILB}) }
+      elsif ($sz > $ENV{HEADB}) { read($h, $t, $ENV{TAILB}) }
+      close $h; $c .= "\n$t" if length $t;
+    } else { print "ok\tunreadable\t$f\n"; next }
+    my $img = $c =~ /\A(\xff\xd8\xff|\x89PNG\r\n\x1a\n|GIF8[79]a|\x00\x00[\x01\x02]\x00|RIFF....WEBP|BM|II\x2a\x00|MM\x00\x2a|....ftyp)/s;
+    my $head = substr($c, 0, 4096);
+    my $text = $head !~ /\x00/;
+    if ($img) {
+      if ($c =~ /<\?php/i) { print "high\timage with PHP code inside (polyglot)\t$f\n" }
+      else                 { print "ok\treal image\t$f\n" }
+    } elsif ($c =~ /<\?php/i || ($text && $c =~ /<\?=/)) {
+      print "high\tPHP code disguised as an image (no image data)\t$f\n";
+    } elsif ($text && $head =~ /\A\s*(<\?xml[^>]*>\s*)?(<!--.*?-->\s*|<!DOCTYPE\s+svg[^>]*>\s*)*<svg[\s>]/is) {
+      # SVG named .png (design-tool exports, e.g. CF7 Honeypot icons): fine
+      # unless it carries scripts, handlers or links (embedded data:image ok)
+      if ($c =~ /<(script|foreignObject|iframe|html|body|meta|a)[\s>]|javascript:|\bon[a-z]+\s*=|(href|src)\s*=\s*["\x27]?\s*(https?:|\/\/|data:(?!image\/))/i) {
+        print "medium\tSVG with scripts/links disguised as an image\t$f\n" }
+      else { print "ok\tplain SVG with a bitmap extension\t$f\n" }
+    } elsif ($text && $head =~ /<(!doctype|html|head|body|script|iframe|meta)[\s>]/i) {
+      print "medium\tHTML page disguised as an image (no image data)\t$f\n";
+    } elsif ($text) {
+      print "medium\ttext file disguised as an image (no image data)\t$f\n";
+    } else { print "ok\tother binary format\t$f\n" }'
 }
 
 classify_EXPOSED_WPCONFIG() {
@@ -406,7 +455,7 @@ CHECK_IDS=()
 declare -A CHECK_SEV CHECK_DEC CHECK_DESC CHECK_RE CHECK_INC CHECK_PRE CHECK_TYPE CHECK_EXCL
 declare -A HIT_COUNT SUPP_COUNT SUPP_SEEN SUPP_FILES SUPP_WHY DOMAINS DECODED_SEEN SELECTED
 declare -A REC_SEEN CF_SEV CF_LINES CF_NOTE CF_DEC CF_FILES CHECK_MAX FILE_SEV SHOWN FILE_CHECKS FILE_DEC
-declare -A CF_PRE CF_MAT CF_POST CF_SLN
+declare -A CF_PRE CF_MAT CF_POST CF_SLN FC_CLEAN
 HIT_PRE=""; HIT_MAT=""; HIT_POST=""; SECTION_ORDER=(); SHOWN_CODE=""; WIDTH=140
 declare -A SEV_RANK=([high]=3 [medium]=2 [low]=1)
 CANDIDATES=(); ALLOW_RE=(); ALLOW_CHECKS=(); ALLOW_WHY=(); PRUNE=(); PRE_ARGS=()
@@ -822,6 +871,7 @@ run_file_check() {
 
   if declare -F "classify_$id" >/dev/null; then
     printf '%s\n' "${kept[@]}" | "classify_$id" | while IFS=$'\t' read -r sv note f; do
+      [[ $sv == ok ]] && { FC_CLEAN[$id|$f]=1; continue; }
       if [[ $sv == skip ]]; then ALLOW_MATCH="auto: $note"; note_supp "$id" "$f"; continue; fi
       record_hit "$id" "$f" "${SEV_RANK[$sv]:-$rank}" "" "$note" ""
       (( VERBOSE )) && { clear_line; printf '\n%s %s%s%s  %s%s · %s%s\n' "$(sev_label "${SEV_RANK[$sv]:-$rank}")" \
@@ -859,7 +909,7 @@ verify_results() {
         done
         for g in "${vex[@]}"; do [[ $b == $g ]] && ok=0; done
         shopt -u nocasematch
-        (( ok )) && ! is_allowed "$f" "$id" && [[ -z ${SUPP_SEEN[$id|$f]} ]] && expected+=("$f")
+        (( ok )) && ! is_allowed "$f" "$id" && [[ -z ${SUPP_SEEN[$id|$f]}${FC_CLEAN[$id|$f]} ]] && expected+=("$f")
       done
     else
       set -f; incs=(${CHECK_INC[$id]}); set +f

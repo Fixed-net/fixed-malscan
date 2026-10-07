@@ -14,6 +14,12 @@ high EXPOSED_PHP backups/old.php.bak
 high EXPOSED_PHP backups/shell.php.dist
 high EXPOSED_PHP backups/wp-config.php.bak
 high EXPOSED_WPCONFIG backups/wp-config.php.bak
+high FAKE_IMAGE wp-content/uploads/2026/10/appended-big.jpg
+high FAKE_IMAGE wp-content/uploads/2026/10/exif-php.jpg
+high FAKE_IMAGE wp-content/uploads/2026/10/logo_s.jpg
+high FAKE_IMAGE wp-content/uploads/2026/10/polyglot-gif.gif
+high FAKE_IMAGE wp-content/uploads/2026/10/polyglot.jpg
+high FAKE_IMAGE wp-content/uploads/2026/10/short-tag.png
 high FROMCHARCODE_LONG malicious/js/fromcharcode-long.js
 high HEX_HTTP malicious/js/hex-http.js
 high JS_EVAL_DECODE malicious/js/eval-atob.js
@@ -50,6 +56,7 @@ low CHARCODE_ARITH malicious/js/shift-via-variable.js
 low CHARCODE_ARITH malicious/js/shifted-url.js
 low CHARCODE_ARITH wp-content/plugins/superb-blocks/assets/js/injected.js
 low EXPOSED_PHP backups/empty.php.bak
+low FAKE_IMAGE wp-content/uploads/2026/10/empty.png
 low JS_PACKER malicious/js/packer.js
 med BASE64_LITERAL malicious/js/eval-atob.js
 med BASE64_LITERAL malicious/php/b64-function-name.php
@@ -59,6 +66,10 @@ med BASE64_URL malicious/js/b64url-http.js
 med BASE64_URL malicious/js/b64url-urlsafe.js
 med BASE64_URL malicious/php/b64url-variable.php
 med EXPOSED_WPCONFIG backups/wp-config-old.txt
+med FAKE_IMAGE wp-content/uploads/2026/10/banner_s.jpg
+med FAKE_IMAGE wp-content/uploads/2026/10/svg-link.png
+med FAKE_IMAGE wp-content/uploads/2026/10/svg-onload.png
+med FAKE_IMAGE wp-content/uploads/2026/10/svg-script.png
 med FROMCHARCODE_LIST malicious/js/fromcharcode-short.js
 med HEX_BLOB malicious/php/hex-blob-one-repeat.php
 med HEX_BLOB malicious/php/hex-blob-table-plus-injection.php
