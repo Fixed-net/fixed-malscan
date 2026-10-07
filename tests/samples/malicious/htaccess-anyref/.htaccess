@@ -1,0 +1,3 @@
+RewriteEngine On
+RewriteCond %{HTTP_REFERER} .
+RewriteRule ^(.*)$ http://anyref.example.com/ [R=302,L]

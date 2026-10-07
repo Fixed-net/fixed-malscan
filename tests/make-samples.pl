@@ -159,6 +159,14 @@ w('malicious/htaccess-mobile/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_U
 w('wp-content/plugins/cache-plugin/injected-cloak.php', $P . 'if (preg_match("/bot|crawl|spider/i", $_SERVER["HTTP_USER_AGENT"])) { return false; }' . "\n" .
   '$r = $_SERVER["HTTP_REFERER"]; if (strpos($r, "google") !== false) { wp_redirect("https://mixed.example.com/"); exit; }' . "\n");
 
+# HTACCESS_REDIRECT / INLINE_REDIRECT / FIRST_VISIT_REDIRECT: every visitor sent away
+w('malicious/htaccess-plain/.htaccess', "RewriteEngine On\nRewriteRule ^(.*)\$ https://scam-ht.example.com/ [R=301,L]\n");
+# injected rule right after a legit canonical one: the RewriteCond above belongs to the canonical rule only
+w('malicious/htaccess-after-canonical/.htaccess', "RewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^(.*)\$ https://mysite.example.com/\$1 [R=301,L]\nRewriteRule ^(.*)\$ https://after.example.com/ [R=301,L]\n");
+w('malicious/htaccess-errordoc/.htaccess', "ErrorDocument 404 https://err.example.com/\n");
+w('malicious/htaccess-anyref/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_REFERER} .\nRewriteRule ^(.*)\$ http://anyref.example.com/ [R=302,L]\n");
+w('malicious/htaccess-hostcond/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_HOST} ^victim\\.example\\.org\$ [NC]\nRewriteRule ^(.*)\$ https://scam2.example.com/\$1 [R=302,L]\n");
+
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
   'static $ASCII = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUD') . '";' . "\n");
@@ -215,3 +223,6 @@ w('legit/js/mobile-class.js', $H . 'if (/Mobi|Android/i.test(navigator.userAgent
 w('legit/js/referrer-analytics.js', $H . 'var ref = document.referrer; if (ref.indexOf("google") > -1) { data.source = "organic"; }' . "\n");
 w('legit/htaccess-cache/.htaccess', "RewriteCond %{HTTP_USER_AGENT} !^.*(android|iphone|mobile).*\$ [NC]\n" .
   "RewriteRule ^(.*) \"/wp-content/cache/supercache/%{SERVER_NAME}/\$1/index.html\" [L]\n");
+w('legit/htaccess-https/.htaccess', "RewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^(.*)\$ https://mysite.example.com/\$1 [R=301,L]\n");
+w('legit/htaccess-www/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_HOST} ^www\\.mysite\\.example\\.com [NC]\nRewriteRule ^(.*)\$ https://mysite.example.com/\$1 [R=301,L]\n");
+w('legit/htaccess-selfhost/.htaccess', "RewriteEngine On\nRewriteCond %{HTTPS} !=on\nRewriteRule ^(.*) https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]\n");

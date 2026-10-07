@@ -138,6 +138,18 @@ register_checks() {
     "['\"](64\\.233\\.1[6-9][0-9]|66\\.249\\.(6[4-9]|[7-9][0-9])|66\\.102\\.[0-9]|72\\.14\\.(19[2-9]|2[0-5][0-9])|74\\.125\\.[0-9]|209\\.85\\.(1[2-9][0-9]|2[0-5][0-9])|216\\.239\\.(3[2-9]|[45][0-9]|6[0-3]))" \
     '*.php' '*.js'
 
+  # Redirects of EVERY visitor to another domain, hard-coded where an
+  # injection puts them (CLOAKING covers redirects aimed at a group). Generic
+  # redirect code in plugin PHP/JS is not checked: plugins legitimately send
+  # users to their own services (OAuth, upgrade pages); injected code there
+  # is usually obfuscated and caught by the decoder checks.
+  # .htaccess: RewriteRule / Redirect* / ErrorDocument to a literal domain.
+  # rate_HTACCESS_REDIRECT skips canonical rules (force https / www).
+  register_check HTACCESS_REDIRECT medium none $'RewriteRule\nRedirect\nErrorDocument' \
+    ".htaccess sends visitors to another domain (RewriteRule/Redirect/ErrorDocument)" \
+    'RewriteRule[ \t]+[^ \t]+[ \t]+https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}([/ \t?]|$)|(^|[ \t])Redirect(Match|Permanent|Temp)?[ \t]+([^ \t]+[ \t]+){1,2}https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}|ErrorDocument[ \t]+[0-9]{3}[ \t]+https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}' \
+    '.htaccess'
+
   # ---- signature lists: just add words (matched as whole words) ----------
   register_signatures WEBSHELL_MARKERS high \
     "Known webshell signatures (WSO/FilesMan, b374k, c99, r57, IndoXploit, Alfa)" '*.php' \
@@ -544,6 +556,31 @@ rate_CLOAKING() {
     elsif ($mobile && !$url)       { print "$n\tok\tmobile check, no hard-coded target URL\n" }
     elsif ($notbot && $out)        { print "$n\tok\toutput for non-bots only (analytics)\n" }
     else                           { print "$n\thigh\t$tgt get: $act", ($url ? " -> $url" : ""), "\n" }'
+}
+
+# A RewriteRule whose own RewriteCond block (the conditions directly above
+# it; Apache applies them to that one rule only) tests the scheme/port
+# (force https) or an HTTP_HOST naming the same domain it redirects to
+# (www <-> non-www) is the site's own canonical rule -> ok. Anything else,
+# incl. Redirect/ErrorDocument (no conditions): MED + target host.
+rate_HTACCESS_REDIRECT() {
+  perl -ne '
+    BEGIN { our ($cf, @L) = ("") }
+    chomp; my $n = $.;                 # $. is reset when the source file is read
+    my ($p, $m, $q, $f, $l) = split /\x1f/;
+    my ($host) = $m =~ m{https?://([A-Za-z0-9.-]+)}; $host = lc $host;
+    if ($f ne $cf) { $cf = $f; @L = (); if (open(my $h, "<", $f)) { @L = <$h>; close $h } }
+    # only the RewriteCond block directly above THIS rule applies to it
+    my $cond = "";
+    if ($m =~ /^RewriteRule/) {
+      for (my $k = $l - 2; $k >= 0; $k--) {
+        my $x = $L[$k]; next if $x =~ /^\s*(#|$)/;
+        last unless $x =~ /^\s*RewriteCond\b/i; $cond .= $x } }
+    (my $base = $host) =~ s/^www\.//; (my $re = quotemeta $base) =~ s/\\\./\\\\?\\./g;
+    if ($cond =~ /RewriteCond\s+%\{(HTTPS|SERVER_PORT|HTTP:X-Forwarded-Proto|REQUEST_SCHEME)\}/i
+        || ($cond =~ /RewriteCond\s+%\{HTTP_HOST\}\s+(\S+)/i && $1 =~ /$re/i)) {
+      print "$n\tok\tcanonical https/www rule for the site itself\n"; next }
+    print "$n\tmedium\tall visitors redirected -> $host\n";'
 }
 
 # Decode the list. Binary bytes (any outside printable ASCII/tab/newline) =

@@ -1,0 +1,4 @@
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://mysite.example.com/$1 [R=301,L]
+RewriteRule ^(.*)$ https://after.example.com/ [R=301,L]
