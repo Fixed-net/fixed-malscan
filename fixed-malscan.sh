@@ -389,11 +389,14 @@ classify_UPLOADS_PHP() {
 }
 
 # -----------------------------------------------------------------------------
-#  MATCH RATERS — rate_<ID>: one match on stdin as "pre US match US post"
-#  (US = \x1f; pre/post = CTX_BEFORE/CTX_AFTER chars around it), print
-#  "sev<TAB>note" to override the check's severity for that match, or nothing
-#  to keep it. Judge the CONTENT, never the path or package: a skip must hold
-#  for any file. A file is ignored only if every match in it is rated skip.
+#  MATCH RATERS — rate_<ID>: all matches of the check on stdin, one per line
+#  "pre US match US post US file US line" (US = \x1f; pre/post = CTX_BEFORE/
+#  CTX_AFTER chars around it; file/line to read more code when needed). For a
+#  match whose severity changes print "N<TAB>sev<TAB>note" (N = input line
+#  number, $.); print nothing to keep it. sev "skip" = not a finding (listed
+#  as ignored), "ok" = clean (not listed). Use `next`, never `exit`. Judge
+#  the CONTENT, never the path or package: a skip must hold for any file. A
+#  file is ignored only if every match in it is rated skip.
 #  Every rule needs a malicious look-alike in tests/samples (see HANDOVER.md).
 # -----------------------------------------------------------------------------
 # Real text/code of 30+ chars always repeats characters; a run where every
@@ -401,9 +404,9 @@ classify_UPLOADS_PHP() {
 # such a table to build code is caught by PHP_CHAR_ASSEMBLY.
 rate_HEX_BLOB() {
   perl -ne '
-    chomp; my (undef, $m) = split /\x1f/, $_, 3;
+    chomp; my (undef, $m) = split /\x1f/;
     my @c = map { hex } $m =~ /\\x([0-9a-fA-F]{1,2})/g; my %u; @u{@c} = ();
-    print "skip\tcharacter lookup table (all ", scalar @c, " chars distinct), not hidden text\n"
+    print "$.\tskip\tcharacter lookup table (all ", scalar @c, " chars distinct), not hidden text\n"
       if @c >= 30 && keys %u == @c;'
 }
 
@@ -414,14 +417,14 @@ rate_HEX_BLOB() {
 rate_BASE64_LITERAL() {
   (( HAVE_B64 )) || { cat >/dev/null; return 0; }
   perl -MMIME::Base64 -ne '
-    chomp; my (undef, $m) = split /\x1f/, $_, 3;
-    my ($b) = $m =~ /([A-Za-z0-9+\/=]{20,})$/ or exit;
+    chomp; my (undef, $m) = split /\x1f/;
+    my ($b) = $m =~ /([A-Za-z0-9+\/=]{20,})$/ or next;
     my $d = decode_base64($b);
     if ($d =~ /^(GIF8[79]a|\x89PNG\r\n|\xff\xd8\xff|RIFF....WEBP)/s
         && $d !~ /<\?|<script|eval|base64|\$_|function/i) {
-      print "skip\tembedded image (", length $d, " bytes), no code inside\n" }
+      print "$.\tskip\tembedded image (", length $d, " bytes), no code inside\n" }
     elsif ($d =~ /^[A-Za-z0-9]{12,40}$/ && $d =~ /[A-Za-z]/ && $d =~ /[0-9]/) {
-      print "skip\topaque ID/key (", length $d, " chars), not code or a URL\n" }'
+      print "$.\tskip\topaque ID/key (", length $d, " chars), not code or a URL\n" }'
 }
 
 # Ordinary character maths, not a char-shift decoder. A real shift (+/-1..25
@@ -429,8 +432,8 @@ rate_BASE64_LITERAL() {
 # fromCharCode() is CHARCODE_SHIFT (HIGH, no rater).
 rate_CHARCODE_ARITH() {
   perl -ne '
-    chomp; my ($p, $m, $q) = split /\x1f/, $_, 3; $q //= "";
-    my ($idx, $op, $n, $rest) = $m =~ /^charCodeAt\(([^)]*)\)\s*([-+^])\s*([0-9]+)(.*)$/ or exit;
+    chomp; my ($p, $m, $q) = split /\x1f/; $q //= "";
+    my ($idx, $op, $n, $rest) = $m =~ /^charCodeAt\(([^)]*)\)\s*([-+^])\s*([0-9]+)(.*)$/ or next;
     my $after = $rest . $q;
     my $why =
       ($op eq "-" && $n =~ /^(32|48|55|64|65|87|96|97)$/)
@@ -442,7 +445,7 @@ rate_CHARCODE_ARITH() {
      || ($op eq "-" && $n == 1 && $idx eq "0" && $p =~ /charCodeAt\(0\)\s*\+\s*1[^0-9].{0,40}$/)
                                                           ? "character-range bounds (a-z expansion)"
       : "";
-    print "skip\t$why\n" if $why;'
+    print "$.\tskip\t$why\n" if $why;'
 }
 
 # Copying array elements in order ($c['col'][1].$c['col'][2].$c['col'][3]...,
@@ -451,10 +454,10 @@ rate_CHARCODE_ARITH() {
 # exactly the previous one + 1.
 rate_PHP_CHAR_ASSEMBLY() {
   perl -ne '
-    chomp; my (undef, $m) = split /\x1f/, $_, 3;
+    chomp; my (undef, $m) = split /\x1f/;
     my @i = $m =~ /\[([0-9]{1,3})\](?=\s*(?:\.|$))/g;
     my $seq = @i >= 4; for my $k (1 .. $#i) { $seq = 0 if $i[$k] != $i[$k-1] + 1 }
-    print "skip\tconsecutive array elements copied in order ($i[0]..$i[-1]), not char-picking\n" if $seq;'
+    print "$.\tskip\tconsecutive array elements copied in order ($i[0]..$i[-1]), not char-picking\n" if $seq;'
 }
 
 # Decode the list. Binary bytes (any outside printable ASCII/tab/newline) =
@@ -462,16 +465,16 @@ rate_PHP_CHAR_ASSEMBLY() {
 # matches, or that names a code-running function, or 20+ chars -> HIGH.
 rate_PHP_CHR_LIST() {
   TECH_RE=${CHECK_RE[WEBSHELL_TECHNIQUES]} perl -ne '
-    chomp; my (undef, $m) = split /\x1f/, $_, 3;
+    chomp; my (undef, $m) = split /\x1f/;
     my @n = $m =~ /(?:^|[\[(,.]|chr\s*\()\s*(0x[0-9a-fA-F]{1,2}|[0-9]{1,3})(?=\s*[,\])]|$)/g;
     my $d = join "", map { chr(/^0x/i ? hex : $_) } @n;
-    if ($d =~ /[^\x09\x0a\x0d\x20-\x7e]/) { print "skip\tbinary bytes (font/barcode/file magic), not text\n"; exit }
+    if ($d =~ /[^\x09\x0a\x0d\x20-\x7e]/) { print "$.\tskip\tbinary bytes (font/barcode/file magic), not text\n"; next }
     (my $show = $d) =~ s/\s+/ /g; $show = substr($show, 0, 40);
     if ((length $ENV{TECH_RE} && $d =~ /$ENV{TECH_RE}/)
         || $d =~ /^(eval|assert|system|exec|passthru|shell_exec|popen|proc_open|pcntl_exec|create_function|call_user_func(_array)?|base64_decode|gzinflate|str_rot13|file_put_contents|fwrite|move_uploaded_file|putenv|mail|FFI|ini_set|ini_restore|dl)$/i) {
-      print "high\tdecodes to \"$show\"\n" }
-    elsif (length $d >= 20) { print "high\tdecodes to \"$show\" (20+ chars of hidden text)\n" }
-    else { print "medium\tdecodes to \"$show\"\n" }'
+      print "$.\thigh\tdecodes to \"$show\"\n" }
+    elsif (length $d >= 20) { print "$.\thigh\tdecodes to \"$show\" (20+ chars of hidden text)\n" }
+    else { print "$.\tmedium\tdecodes to \"$show\"\n" }'
 }
 
 # -----------------------------------------------------------------------------
@@ -931,9 +934,17 @@ run_check() {
       ' 2>>"$ERRF" > "$TMPD/list"
   mapfile -t hits < "$TMPD/list"
 
-  local US=$'\x1f' hit file rest ln pre mat post key window x decoded rated hrank
-  local -A auto_skip kept_f
+  local US=$'\x1f' hit file rest ln pre mat post key window x decoded rated hrank i=0
+  local -A auto_skip kept_f rate_ok RATED
+  # all matches rated by ONE rater process (see MATCH RATERS): "N<TAB>sev<TAB>note"
+  if declare -F "rate_$id" >/dev/null; then
+    printf '%s\n' "${hits[@]}" \
+      | perl -ne 'chomp; my ($f, $l, $p, $m, $q) = split /\x1f/; print "$p\x1f$m\x1f$q\x1f$f\x1f$l\n"' \
+      | "rate_$id" > "$TMPD/rated" 2>>"$ERRF"
+    while IFS= read -r x; do RATED[${x%%$'\t'*}]=${x#*$'\t'}; done < "$TMPD/rated"
+  fi
   for hit in "${hits[@]}"; do
+    i=$(( i + 1 ))
     file=${hit%%"$US"*}; rest=${hit#*"$US"}
     ln=${rest%%"$US"*};  rest=${rest#*"$US"}
     pre=${rest%%"$US"*};  rest=${rest#*"$US"}
@@ -942,11 +953,10 @@ run_check() {
 
     if is_allowed "$file" "$id"; then note_supp "$id" "$file"; continue; fi
     hrank=$rank
-    if declare -F "rate_$id" >/dev/null; then   # per-match severity (see MATCH RATERS)
-      rated=$(printf '%s\x1f%s\x1f%s\n' "$pre" "$mat" "$post" | "rate_$id")
-      if [[ ${rated%%$'\t'*} == skip ]]; then auto_skip[$file]=${rated#*$'\t'}; continue; fi
-      [[ -n $rated ]] && hrank=${SEV_RANK[${rated%%$'\t'*}]:-$rank}
-    fi
+    rated=${RATED[$i]}                           # per-match severity (see MATCH RATERS)
+    if [[ ${rated%%$'\t'*} == skip ]]; then auto_skip[$file]=${rated#*$'\t'}; continue; fi
+    if [[ ${rated%%$'\t'*} == ok ]]; then rate_ok[$file]=1; continue; fi
+    [[ -n $rated ]] && hrank=${SEV_RANK[${rated%%$'\t'*}]:-$rank}
     kept_f[$file]=1
     key="$file:$ln"
     [[ ${REC_SEEN[$key]} == *" $id "* ]] && continue    # same check, same line
@@ -964,10 +974,14 @@ run_check() {
     record_hit "$id" "$file" "$hrank" "$ln" "" "$decoded"
     (( VERBOSE )) && print_finding "$hrank" "$file" "$ln" "$id" "$pre" "$mat" "$post" "$decoded"
   done
-  # a file is ignored only if EVERY match in it was rated skip
+  # a file is ignored only if EVERY match in it was rated skip (or ok);
+  # clean = every match rated ok: not listed or counted (--verify knows)
   for file in "${!auto_skip[@]}"; do
     [[ -n ${kept_f[$file]} ]] && continue
     ALLOW_MATCH="auto: ${auto_skip[$file]}"; note_supp "$id" "$file"
+  done
+  for file in "${!rate_ok[@]}"; do
+    [[ -n ${kept_f[$file]}${auto_skip[$file]} ]] || FC_CLEAN[$id|$file]=1
   done
 }
 
@@ -1050,7 +1064,7 @@ verify_results() {
       for d in "${EXCLUDE_DIRS[@]}"; do args+=(--exclude-dir="$d"); done
       if (( SKIP_CORE )); then for d in "${CORE_DIRS[@]}"; do args+=(--exclude-dir="$d"); done; fi
       grep -rlIE "${args[@]}" -- "${CHECK_RE[$id]}" . 2>/dev/null | while IFS= read -r f; do
-        f=${f#./}; is_allowed "$f" "$id" || [[ -n ${SUPP_SEEN[$id|$f]} ]] || expected+=("$f")
+        f=${f#./}; is_allowed "$f" "$id" || [[ -n ${SUPP_SEEN[$id|$f]}${FC_CLEAN[$id|$f]} ]] || expected+=("$f")
       done
     fi
     printf '%s' "${CF_FILES[$id]}" | while IFS= read -r f; do [[ -n $f ]] && got+=("$f"); done
