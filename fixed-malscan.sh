@@ -21,7 +21,7 @@
 #  FIXED-MALSCAN-SELF-DELETE-MARKER  (only a file containing this line is deleted)
 # =============================================================================
 
-VERSION="2.8"
+VERSION="2.8.1"
 if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] || \
    { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 2 ]; }; then
   echo "fixed-malscan: bash >= 4.2 required (run it with bash, not sh)" >&2; exit 2
