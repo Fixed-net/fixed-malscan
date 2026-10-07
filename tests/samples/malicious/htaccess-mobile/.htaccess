@@ -1,0 +1,3 @@
+RewriteEngine On
+RewriteCond %{HTTP_USER_AGENT} (android|iphone|mobile) [NC]
+RewriteRule ^(.*)$ https://m-ht.example.com/$1 [R=302,L]

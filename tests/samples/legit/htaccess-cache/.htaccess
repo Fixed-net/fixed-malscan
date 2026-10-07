@@ -1,0 +1,2 @@
+RewriteCond %{HTTP_USER_AGENT} !^.*(android|iphone|mobile).*$ [NC]
+RewriteRule ^(.*) "/wp-content/cache/supercache/%{SERVER_NAME}/$1/index.html" [L]

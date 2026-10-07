@@ -113,6 +113,31 @@ register_checks() {
     "Request data passed straight to eval/system/exec or called as a function" \
     '((^|[^A-Za-z0-9_$>:])(eval|assert|system|exec|passthru|shell_exec|popen|proc_open|create_function|call_user_func(_array)?)\s*\(\s*(@?(stripslashes|base64_decode|urldecode|rawurldecode|str_rot13|gzinflate)\s*\(\s*)*@?\$_(GET|POST|REQUEST|COOKIE|SERVER)|\$_(GET|POST|REQUEST|COOKIE)\s*\[[^]]+\]\s*\()' '*.php'
 
+  # Cloaking: visitors are told apart by referrer (came from Google), user
+  # agent (Googlebot, iPhone) or Google's crawler IPs, and only that group is
+  # redirected / shown injected content, so the site owner on a desktop never
+  # sees it. The regex only finds where the referrer / user agent is READ;
+  # rate_CLOAKING reads the code around it (multi-line: real cloakers store
+  # it in a variable first) and reports only when it is tested for search
+  # engines/bots/mobile AND an action follows (redirect, injected script or
+  # link, remote content). A condition alone (cache, SEO, analytics,
+  # wp_is_mobile) is clean.
+  register_check CLOAKING high none \
+    $'HTTP_USER_AGENT\nHTTP_REFERER\ndocument.referrer\nnavigator.userAgent' \
+    "Cloaking: search-engine/bot/mobile visitors redirected or served other content" \
+    '(HTTP_(USER_AGENT|REFERER)|document\.referrer|navigator\.userAgent)' \
+    '*.php' '*.js' '.htaccess'
+
+  # Google's crawler IP ranges as string literals: code that recognises
+  # Googlebot by IP to show it different content (plugins verify crawlers by
+  # reverse DNS, not by hard-coded ranges). Separate check: in one alternation
+  # with CLOAKING perl loses its literal optimisations (10x slower).
+  register_check CLOAKING_BOT_IP high none \
+    $'64.233.1\n66.249.\n66.102.\n72.14.\n74.125.\n209.85.\n216.239.' \
+    "Hard-coded Googlebot IP ranges: content switched for Google's crawler" \
+    "['\"](64\\.233\\.1[6-9][0-9]|66\\.249\\.(6[4-9]|[7-9][0-9])|66\\.102\\.[0-9]|72\\.14\\.(19[2-9]|2[0-5][0-9])|74\\.125\\.[0-9]|209\\.85\\.(1[2-9][0-9]|2[0-5][0-9])|216\\.239\\.(3[2-9]|[45][0-9]|6[0-3]))" \
+    '*.php' '*.js'
+
   # ---- signature lists: just add words (matched as whole words) ----------
   register_signatures WEBSHELL_MARKERS high \
     "Known webshell signatures (WSO/FilesMan, b374k, c99, r57, IndoXploit, Alfa)" '*.php' \
@@ -458,6 +483,67 @@ rate_PHP_CHAR_ASSEMBLY() {
     my @i = $m =~ /\[([0-9]{1,3})\](?=\s*(?:\.|$))/g;
     my $seq = @i >= 4; for my $k (1 .. $#i) { $seq = 0 if $i[$k] != $i[$k-1] + 1 }
     print "$.\tskip\tconsecutive array elements copied in order ($i[0]..$i[-1]), not char-picking\n" if $seq;'
+}
+
+# CLOAKING found a read of the referrer / user agent. Who is targeted = the
+# engine/bot/mobile/social words near it (that line + 3 lines; minified: 400
+# chars). No words -> ok. Then look for an action after it: 12 lines, or 40
+# for referrer + search engine (strongest sign; then any remote fetch counts,
+# e.g. curl to a URL built from variables). Minified JS: next 600 chars.
+#   referrer / search engine / bot / social app + any action   -> HIGH
+#   mobile only + action to a hard-coded URL                    -> HIGH
+#   mobile only + action without a URL (menus, iOS tap fixes)   -> ok
+#   NOT-bot (!preg_match(bot)) + only printed output (analytics) -> ok
+#   no action                                                   -> ok
+rate_CLOAKING() {
+  perl -ne '
+    BEGIN { our ($cf, @L) = ("") }
+    chomp; my $n = $.;             # $. is reset when the source file is read
+    my ($p, $m, $q, $f, $l) = split /\x1f/;
+    if ($f ne $cf) { $cf = $f; @L = (); if (open(my $h, "<", $f)) { @L = <$h>; close $h } }
+    my $line = $L[$l - 1] // ""; chomp $line;
+    my $at = index($line, $m); $at = 0 if $at < 0;
+    my $min = length($line) > 2000;
+    my $near = $min ? substr($line, ($at > 200 ? $at - 200 : 0), 600)
+                    : join(" ", $line, map { $L[$_] // "" } $l .. $l + 2);
+    my @w = map { lc } $near =~ /(google|bing|yahoo|yandex|baidu|duckduck|bot|crawl|spider|slurp|android|iphone|ipad|ipod|mobile|facebook|twitter|instagram|tiktok)/gi;
+    my %u; @w = grep { !$u{$_}++ } @w;
+    if (!@w) { print "$n\tok\treferrer/user agent not tested for bots, engines or mobile\n"; next }
+    my $who = $m =~ /REFERER|referrer/ ? "referrer" : "user agent";
+    my $strong = $who eq "referrer" && grep { /^(google|bing|yahoo|yandex|baidu|duckduck)$/ } @w;
+    my $scope = substr($line, $at);
+    if ($min) { $scope = substr($scope, 0, 600 + length $m) }
+    else { my $n = $strong ? 40 : 12;
+           for my $k ($l .. $l + $n - 1) { last if $k > $#L || length($scope) > 8000; $scope .= " " . $L[$k] } }
+    my $mobile = !grep { !/^(android|iphone|ipad|ipod|mobile)$/ } @w;
+    my $notbot = $who eq "user agent" && $p =~ /!\s*(preg_match|strpos|stripos|stristr|strstr)\s*\([^)]*$/i;
+    my $ext = $f =~ /\.js$/i ? "js" : $f =~ /htaccess$/i ? "ht" : "php";
+    my ($act, $out) = ("", 0);
+    if ($ext eq "ht") {
+      $act = "RewriteRule to an external URL" if $scope =~ /RewriteRule\s+\S+\s+https?:\/\//i }
+    elsif ($ext eq "js") {
+      $act = $scope =~ /\blocation\.(replace|assign)\s*\(|\blocation(\.href)?\s*=(?!=)/ ? "redirect (location)"
+           : $scope =~ /\bwindow\.open\s*\(/                                         ? "popup (window.open)"
+           : $scope =~ /createElement\s*\(\s*[\x27"]script|document\.write\s*\(/      ? "script injected"
+           : $scope =~ /\b(eval|atob)\s*\(|fromCharCode/                              ? "decoded/evaluated code"
+           : "" }
+    else {
+      $act = $scope =~ /header\s*\(\s*[\x27"]\s*Location\s*:/i                        ? "redirect (header Location)"
+           : $scope =~ /\bwp_(safe_)?redirect\s*\(/                                   ? "redirect (wp_redirect)"
+           : $scope =~ /(include|require)(_once)?\s*\(?\s*[\x27"]https?:/i             ? "remote include"
+           : $scope =~ /\b(file_get_contents|curl_init|fopen|readfile|wp_remote_get|fsockopen)\s*\([^;]{0,120}https?:/i ? "remote content fetched"
+           : $scope =~ /\b(eval|assert|base64_decode|gzinflate|str_rot13)\s*\(/       ? "decoded/evaluated code"
+           : $scope =~ /http-equiv\s*=\s*.?refresh|location\.(href|replace)/i         ? "redirect (meta refresh / JS)"
+           : $strong && $scope =~ /\b(curl_init|curl_exec|file_get_contents|fsockopen|stream_socket_client)\s*\(/i ? "remote content fetched"
+           : "";
+      if (!$act && $scope =~ /\b(echo|print|printf)\b[^;]{0,300}(<script|<iframe|<a\s[^>]{0,80}href)/i) {
+        $act = "links/script printed"; $out = 1 } }
+    my ($url) = $scope =~ m{(?:https?:)?//([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,})}i;
+    my $tgt = "visitors by $who (" . join(",", @w[0 .. ($#w < 3 ? $#w : 3)]) . ")";
+    if (!$act)                     { print "$n\tok\tno redirect/injection after the check\n" }
+    elsif ($mobile && !$url)       { print "$n\tok\tmobile check, no hard-coded target URL\n" }
+    elsif ($notbot && $out)        { print "$n\tok\toutput for non-bots only (analytics)\n" }
+    else                           { print "$n\thigh\t$tgt get: $act", ($url ? " -> $url" : ""), "\n" }'
 }
 
 # Decode the list. Binary bytes (any outside printable ASCII/tab/newline) =
@@ -941,7 +1027,10 @@ run_check() {
     printf '%s\n' "${hits[@]}" \
       | perl -ne 'chomp; my ($f, $l, $p, $m, $q) = split /\x1f/; print "$p\x1f$m\x1f$q\x1f$f\x1f$l\n"' \
       | "rate_$id" > "$TMPD/rated" 2>>"$ERRF"
-    while IFS= read -r x; do RATED[${x%%$'\t'*}]=${x#*$'\t'}; done < "$TMPD/rated"
+    while IFS= read -r x; do
+      if [[ $x =~ ^[0-9]+$'\t' ]]; then RATED[${x%%$'\t'*}]=${x#*$'\t'}
+      else printf 'rate_%s: bad output line: %s\n' "$id" "${x:0:200}" >> "$ERRF"; fi
+    done < "$TMPD/rated"
   fi
   for hit in "${hits[@]}"; do
     i=$(( i + 1 ))
@@ -963,6 +1052,11 @@ run_check() {
     REC_SEEN[$key]+=" $id "
 
     decoded=""
+    # no decoder: show the rater's reason instead (e.g. what CLOAKING found)
+    if [[ $dec == none && -n $rated ]]; then
+      decoded="reason: ${rated#*$'\t'}"$'\n'
+      [[ $rated == *' -> '* ]] && add_domains "//${rated##* -> }" "$file"   # target host
+    fi
     if [[ $dec != none && -z ${DECODED_SEEN[$key:$dec]} ]]; then
       DECODED_SEEN[$key:$dec]=1
       printf '%s\n' "$window" | "decode_$dec" | while IFS= read -r x; do
@@ -1160,7 +1254,9 @@ print_code_lines() {  # $1 file $2 check: decoded value, flagged code, other par
   printf '%s' "${FILE_DEC[$f]}" | while IFS= read -r x; do
     [[ -n $x ]] || continue
     (( ${#x} > w )) && x="${x:0:w-3}..."
-    if [[ $x == http* || $x == //* ]]; then
+    if [[ $x == "reason: "* ]]; then        # a rater's finding (no decoder)
+      printf '      %sreason%s   %s\n' "$DIM" "$RST" "${x#reason: }"
+    elif [[ $x == http* || $x == //* ]]; then
       printf '      %sdecoded%s  %s%s%s\n' "$DIM" "$RST" "$RED" "$x" "$RST"
     else
       printf '      %sdecoded%s  %s\n' "$DIM" "$RST" "$x"
