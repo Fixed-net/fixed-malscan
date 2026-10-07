@@ -172,6 +172,15 @@ w('malicious/js/first-visit.js', $H . 'if (document.cookie.indexOf("_vst") == -1
   '  document.cookie = "_vst=1; path=/; max-age=86400";' . "\n" . '  window.location.href = "https://fv.example.com/";' . "\n}\n");
 w('malicious/js/first-visit-obf.js', $H . 'if(document.cookie.search("_x=")<0){document.cookie="_x=1";location.replace(atob("' . encode_base64('https://fv2.example.com/', '') . '"))}' . "\n");
 
+# SHIFTED_URL: shifts whose text holds quotes / backslash / space, and the escaped form
+for my $n (-15, -13, -12, -8, -1) {
+  my $u = shift_s("https://shift$n.example.com/x.js" =~ s/-/m/r, $n);
+  my $q = $u =~ /"/ ? "'" : '"';                        # quote type not used inside
+  (my $f = "malicious/js/shifted-url$n.js") =~ s/-(\d)/m$1/;
+  w($f, $H . "var s=$q$u$q;\n");
+}
+w('malicious/js/shifted-url-escaped.js', $H . "var s='" . (shift_s('https://esc.example.com/', -8) =~ s/'/\\'/gr) . "';\n");
+
 # ---------------- known false positives: must stay quiet/ignored ----------------
 w('legit/php/hex-lookup-table.php', $P .
   'static $ASCII = "' . hex_esc(' eiasntroludcmpgfbhvyqwkxjzEIASNTROLUD') . '";' . "\n");

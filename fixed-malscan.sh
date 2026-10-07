@@ -713,20 +713,30 @@ decode_none() { cat >/dev/null; }
 
 decode_caesar() {
   perl -ne '
-    my ($s, %seen);
+    my ($s, %seen, @out);
     if (/charCodeAt\([^)]*\)\s*([-+])\s*(\d{1,2})(?!\d)/) { $s = $1 eq "-" ? $2 : -$2 }
     s/[\x27"`]\s*\+\s*[\x27"`]//g;            # join 'a'+'b'
-    for my $seg (split /[\x27"`]/) {
-      next if length($seg) < 6;
+    s/\\([\x27"\\])/$1/g;                     # unescape backslash-escaped quotes
+    # 1) a shifted http(s):// anywhere: decode from its first char for as long
+    #    as the result is URL text (shifted text may itself contain quotes)
+    for my $n (-25..-1, 1..25) { for my $sch ("https://", "http://") {
+      my $lit = join "", map { chr(ord($_) + $n) } split //, $sch;
+      my $i = index($_, $lit); next if $i < 0;
+      my $d = "";
+      for my $c (split //, substr($_, $i, 300)) { my $o = ord($c) - $n;
+        last if $o < 33 || $o > 126 || chr($o) =~ /[\x27"<>\\`{}|^]/; $d .= chr $o }
+      push @out, $d if $d =~ m{^https?://[a-z0-9-]+\.}i } }
+    # 2) quoted strings (paired quotes) with the known shift: schemeless forms
+    while (/([\x27"`])((?:(?!\1).){6,}?)\1/g) { my $seg = $2;
       for my $n (defined $s ? ($s) : (), -25..-1, 1..25) {
         my $d = join "", map { chr(ord($_) - $n) } split //, $seg;
-        next if $d =~ /[^\x20-\x7e]/ || $seen{$d};
-        my $ok = $d =~ m{^https?://[a-z0-9-]+\.}i
-              || (defined $s && $n == $s && ($d =~ m{^//[a-z0-9-]+\.}i
-                  || $d =~ m{^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}/}i));
-        if ($ok) { $seen{$d} = 1; print "$d\n" }
-      }
-    }'
+        next if $d =~ /[^\x20-\x7e]/;
+        push @out, $d if $d =~ m{^https?://[a-z0-9-]+\.}i
+          || (defined $s && $n == $s && ($d =~ m{^//[a-z0-9-]+\.}i
+              || $d =~ m{^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}/}i)) } }
+    for my $d (@out) {                        # drop cut-off copies of a longer one
+      next if $seen{$d}++ || grep { length($_) > length($d) && index($_, $d) == 0 } @out;
+      print "$d\n" }'
 }
 
 decode_base64() {
@@ -783,10 +793,15 @@ decode_urlenc() {
     }'
 }
 
-shifted_scheme_literals() {  # http:// and https:// shifted by ±1..25
-  perl -e 'for my $p ("https://", "http://") { for my $n (-25..-1, 1..25) {
+# http:// and https:// shifted by ±1..25, every shift that stays printable
+# ASCII (incl. space, quotes, backslash: -8 = `llhk2'', -12 = \hhdg.##), and
+# the escaped form for a string literal (\' \" \\) when it differs.
+shifted_scheme_literals() {
+  perl -e 'my %u; for my $p ("https://", "http://") { for my $n (-25..-1, 1..25) {
     my $s = join "", map { chr(ord($_) + $n) } split //, $p;
-    next if $s =~ /[^\x21-\x7e]|[\x27"`\\]/; print "$s\n" } }'
+    next if $s =~ /[^\x20-\x7e]/;
+    (my $e = $s) =~ s/([\x27"\\])/\\$1/g;
+    print "$_\n" for grep { !$u{$_}++ } $s, $e } }'
 }
 
 literals_to_regex() {  # newline list -> escaped ERE alternation
@@ -1159,7 +1174,7 @@ run_check() {
           # never print raw control chars (a file could carry terminal escapes)
           $post =~ s/[\r\n]+$//;
           for ($pre, $mat, $post) { s/[\r\n]+/ /g; s/[\x00-\x08\x0b-\x1f\x7f]/?/g; }
-          $wi =~ s/[\r\n]+//g; $wi =~ tr/\x1f/ /;
+          $wi =~ s/[\r\n]+//g;     # window = LAST field: a \x1f inside it is harmless
           print "$ARGV\x1f$.\x1f$pre\x1f$mat\x1f$post\x1f$wi\n";
           last if ++$n >= 20;                       # cap matches per line
         }

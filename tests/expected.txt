@@ -12,6 +12,7 @@ domain cloak-js.example.com malicious/js/cloak-referer-redirect.js
 domain cloak.example.com malicious/php/cloak-referer-redirect.php
 domain doorway.example.com malicious/php/cloak-bot-remote.php
 domain err.example.com malicious/htaccess-errordoc/.htaccess
+domain esc.example.com malicious/js/shifted-url-escaped.js
 domain fcc.example.com malicious/js/fromcharcode-long.js
 domain fv.example.com malicious/js/first-visit.js
 domain fv2.example.com malicious/js/first-visit-obf.js
@@ -28,6 +29,11 @@ domain reveal.example.com wp-content/plugins/superb-blocks/assets/js/dynamic-blo
 domain scam-ht.example.com malicious/htaccess-plain/.htaccess
 domain scam2.example.com malicious/htaccess-hostcond/.htaccess
 domain shift.example.com malicious/js/shifted-url.js
+domain shiftm1.example.com malicious/js/shifted-urlm1.js
+domain shiftm12.example.com malicious/js/shifted-urlm12.js
+domain shiftm13.example.com malicious/js/shifted-urlm13.js
+domain shiftm15.example.com malicious/js/shifted-urlm15.js
+domain shiftm8.example.com malicious/js/shifted-urlm8.js
 domain spam.example.com malicious/php/cloak-bot-links.php
 domain superb.example.com wp-content/plugins/superb-blocks/assets/js/injected.js
 domain tern.example.com malicious/js/cloak-ternary.js
@@ -75,7 +81,13 @@ high PHP_CHR_LIST malicious/php/chr-list-technique.php
 high PHP_EVAL_CHAIN malicious/php/eval-chain.php
 high PHP_HEX_VARVAR malicious/php/hex-varvar.php
 high PHP_INPUT_EXEC malicious/php/input-exec.php
+high SHIFTED_URL malicious/js/shifted-url-escaped.js
 high SHIFTED_URL malicious/js/shifted-url.js
+high SHIFTED_URL malicious/js/shifted-urlm1.js
+high SHIFTED_URL malicious/js/shifted-urlm12.js
+high SHIFTED_URL malicious/js/shifted-urlm13.js
+high SHIFTED_URL malicious/js/shifted-urlm15.js
+high SHIFTED_URL malicious/js/shifted-urlm8.js
 high SHIFTED_URL wp-content/plugins/superb-blocks/assets/js/dynamic-blocks/reveal-button.js
 high SHIFTED_URL wp-content/plugins/superb-blocks/assets/js/injected.js
 high UPLOADS_PHP wp-content/uploads/2026/10/cache.php
